@@ -638,6 +638,19 @@ func (s *BifrostHTTPServer) RemoveRoutingRule(ctx context.Context, id string) er
 	return nil
 }
 
+func reloadClientConfigInPlace(current **configstore.ClientConfig, updated *configstore.ClientConfig) {
+	if updated == nil {
+		*current = nil
+		return
+	}
+	if *current == nil {
+		*current = updated
+		return
+	}
+
+	**current = *updated
+}
+
 // ReloadClientConfigFromConfigStore reloads the client config from config store
 func (s *BifrostHTTPServer) ReloadClientConfigFromConfigStore(ctx context.Context) error {
 	if s.Config == nil || s.Config.ConfigStore == nil {
@@ -650,7 +663,7 @@ func (s *BifrostHTTPServer) ReloadClientConfigFromConfigStore(ctx context.Contex
 	if config == nil {
 		return fmt.Errorf("client config not found")
 	}
-	s.Config.ClientConfig = config
+	reloadClientConfigInPlace(&s.Config.ClientConfig, config)
 	// Reloading whitelisted routes from the client config
 	if s.AuthMiddleware != nil {
 		s.AuthMiddleware.UpdateWhitelistedRoutes(config.WhitelistedRoutes)

@@ -1,7 +1,10 @@
 package server
 
 import (
+	"reflect"
 	"testing"
+
+	"github.com/maximhq/bifrost/framework/configstore"
 )
 
 // TestConfig is a sample config struct for testing
@@ -276,5 +279,69 @@ func TestMarshalPluginConfig_WithComplexType(t *testing.T) {
 	}
 	if result.Nested.Name != "nested-config" {
 		t.Errorf("Expected nested name=nested-config, got %s", result.Nested.Name)
+	}
+}
+
+func TestReloadClientConfigInPlace_PreservesExistingPointers(t *testing.T) {
+	current := &configstore.ClientConfig{
+		EnforceAuthOnInference: false,
+		RequiredHeaders:        []string{"x-old-required"},
+		LoggingHeaders:         []string{"x-old-logging"},
+	}
+	original := current
+
+	enforcePtr := &current.EnforceAuthOnInference
+	requiredHeadersPtr := &current.RequiredHeaders
+	loggingHeadersPtr := &current.LoggingHeaders
+
+	updated := &configstore.ClientConfig{
+		EnforceAuthOnInference: true,
+		RequiredHeaders:        []string{"x-new-required"},
+		LoggingHeaders:         []string{"x-new-logging"},
+	}
+
+	reloadClientConfigInPlace(&current, updated)
+
+	if current != original {
+		t.Fatal("expected client config pointer to be preserved")
+	}
+	if enforcePtr != &current.EnforceAuthOnInference {
+		t.Fatal("expected EnforceAuthOnInference field pointer to be preserved")
+	}
+	if requiredHeadersPtr != &current.RequiredHeaders {
+		t.Fatal("expected RequiredHeaders field pointer to be preserved")
+	}
+	if loggingHeadersPtr != &current.LoggingHeaders {
+		t.Fatal("expected LoggingHeaders field pointer to be preserved")
+	}
+	if !*enforcePtr {
+		t.Fatal("expected EnforceAuthOnInference to be updated in place")
+	}
+	if !reflect.DeepEqual(*requiredHeadersPtr, updated.RequiredHeaders) {
+		t.Fatalf("expected RequiredHeaders %v, got %v", updated.RequiredHeaders, *requiredHeadersPtr)
+	}
+	if !reflect.DeepEqual(*loggingHeadersPtr, updated.LoggingHeaders) {
+		t.Fatalf("expected LoggingHeaders %v, got %v", updated.LoggingHeaders, *loggingHeadersPtr)
+	}
+}
+
+func TestReloadClientConfigInPlace_AssignsWhenCurrentNil(t *testing.T) {
+	var current *configstore.ClientConfig
+	updated := &configstore.ClientConfig{EnforceAuthOnInference: true}
+
+	reloadClientConfigInPlace(&current, updated)
+
+	if current != updated {
+		t.Fatal("expected updated config to be assigned when current is nil")
+	}
+}
+
+func TestReloadClientConfigInPlace_ClearsWhenUpdatedNil(t *testing.T) {
+	current := &configstore.ClientConfig{EnforceAuthOnInference: true}
+
+	reloadClientConfigInPlace(&current, nil)
+
+	if current != nil {
+		t.Fatal("expected current config to be cleared when updated config is nil")
 	}
 }
