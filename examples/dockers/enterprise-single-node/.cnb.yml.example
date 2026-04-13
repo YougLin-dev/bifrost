@@ -1,0 +1,26 @@
+main:
+  push:
+    - services:
+        - docker
+      stages:
+        - name: docker login
+          script: docker login ${CNB_DOCKER_REGISTRY} -u cnb -p ${CNB_TOKEN}
+        - name: docker build
+          script: |
+            if [ -n "${CNB_IMAGE_NAME}" ]; then
+              IMAGE_PATH="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}/${CNB_IMAGE_NAME}"
+            else
+              IMAGE_PATH="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
+            fi
+            docker build \
+              -f examples/dockers/enterprise-single-node/Dockerfile \
+              -t ${IMAGE_PATH}:latest \
+              .
+        - name: docker push
+          script: |
+            if [ -n "${CNB_IMAGE_NAME}" ]; then
+              IMAGE_PATH="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}/${CNB_IMAGE_NAME}"
+            else
+              IMAGE_PATH="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}"
+            fi
+            docker push ${IMAGE_PATH}:latest

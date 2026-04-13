@@ -1,0 +1,87 @@
+services:
+  bifrost:
+    image: ${BIFROST_IMAGE}
+    container_name: bifrost-enterprise
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8080}
+      APP_DIR: /app/data
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_STYLE: ${LOG_STYLE:-json}
+      GOGC: ${GOGC:-200}
+      GOMEMLIMIT: ${GOMEMLIMIT:-3600MiB}
+      BIFROST_DB_HOST: ${BIFROST_DB_HOST:-postgres}
+      BIFROST_DB_PORT: ${BIFROST_DB_PORT:-5432}
+      BIFROST_DB_SSLMODE: ${BIFROST_DB_SSLMODE:-disable}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BIFROST_ADMIN_USERNAME: ${BIFROST_ADMIN_USERNAME}
+      BIFROST_ADMIN_PASSWORD: ${BIFROST_ADMIN_PASSWORD}
+      BIFROST_ENCRYPTION_KEY: ${BIFROST_ENCRYPTION_KEY}
+    volumes:
+      - bifrost-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:$$APP_PORT/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    stop_grace_period: 30s
+    mem_limit: 4g
+    cpus: 4.0
+    pids_limit: 1024
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bifrost-enterprise-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    init: true
+    stop_grace_period: 30s
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+
+volumes:
+  bifrost-data:
+    driver: local
+  postgres-data:
+    driver: local

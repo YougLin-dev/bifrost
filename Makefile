@@ -13,6 +13,11 @@ FLOW ?=
 VERSION ?= dev-build
 LOCAL ?=
 DEBUG ?=
+ENTERPRISE_IMAGE ?=
+ENTERPRISE_TAG ?=
+CNB_DOCKER_REGISTRY ?= docker.cnb.cool
+CNB_REPO_SLUG_LOWERCASE ?=
+CNB_IMAGE_NAME ?=
 
 # Colors for output
 RED=\033[0;31m
@@ -23,7 +28,7 @@ CYAN=\033[0;36m
 NC=\033[0m # No Color
 ECHO := printf '%b\n'
 
-.PHONY: all help dev build-ui build build-cli run run-cli install-air clean test test-cli install-ui setup-workspace work-init work-clean docs docker-image docker-run cleanup-enterprise mod-tidy test-integrations-py test-integrations-ts install-playwright run-e2e run-e2e-ui run-e2e-headed
+.PHONY: all help dev build-ui build build-cli run run-cli install-air clean test test-cli install-ui setup-workspace work-init work-clean docs docker-image docker-run docker-image-enterprise docker-push-enterprise-cnb cleanup-enterprise mod-tidy test-integrations-py test-integrations-ts install-playwright run-e2e run-e2e-ui run-e2e-headed
 
 all: help
 
@@ -47,6 +52,11 @@ help: ## Show this help message
 	@$(ECHO) "  APP_DIR           App data directory inside container (default: /app/data)"
 	@$(ECHO) "  LOCAL             Use local go.work for builds (e.g., make build LOCAL=1)"
 	@$(ECHO) "  DEBUG             Enable delve debugger on port 2345 (e.g., make dev DEBUG=1, make test-core DEBUG=1, make test-governance DEBUG=1)"
+	@$(ECHO) "  ENTERPRISE_IMAGE  Enterprise image repository/name for local build target (default: bifrost-enterprise)"
+	@$(ECHO) "  ENTERPRISE_TAG    Enterprise image tag (default: current git short SHA)"
+	@$(ECHO) "  CNB_DOCKER_REGISTRY CNB Docker registry (default: docker.cnb.cool)"
+	@$(ECHO) "  CNB_REPO_SLUG_LOWERCASE CNB repo path in lowercase, e.g. org/project"
+	@$(ECHO) "  CNB_IMAGE_NAME    Optional CNB image name for non-same-name artifacts"
 	@$(ECHO) ""
 	@$(ECHO) "$(YELLOW)Test Configuration:$(NC)"
 	@$(ECHO) "  TEST_REPORTS_DIR  Directory for HTML test reports (default: test-reports)"
@@ -285,6 +295,52 @@ docker-run: ## Run Docker container (Usage: make docker-run [CONFIG=path/to/conf
 		CONFIG_MOUNT=""; \
 	fi; \
 	docker run -e APP_PORT=$(PORT) -e APP_HOST=0.0.0.0 -p $(PORT):$(PORT) -e LOG_LEVEL=$(LOG_LEVEL) -e LOG_STYLE=$(LOG_STYLE) -v $(shell pwd):/app/data $$CONFIG_MOUNT bifrost
+
+docker-image-enterprise: ## Build the enterprise single-node image from the current repo
+	@$(ECHO) "$(GREEN)Building enterprise single-node Docker image...$(NC)"
+	$(eval ENTERPRISE_GIT_SHA=$(shell git rev-parse --short HEAD))
+	$(eval ENTERPRISE_EFFECTIVE_TAG=$(if $(ENTERPRISE_TAG),$(ENTERPRISE_TAG),$(ENTERPRISE_GIT_SHA)))
+	$(eval ENTERPRISE_EFFECTIVE_IMAGE=$(if $(ENTERPRISE_IMAGE),$(ENTERPRISE_IMAGE),bifrost-enterprise))
+	@TAG_ARGS="-t $(ENTERPRISE_EFFECTIVE_IMAGE):$(ENTERPRISE_EFFECTIVE_TAG)"; \
+	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
+		TAG_ARGS="$$TAG_ARGS -t $(ENTERPRISE_EFFECTIVE_IMAGE):latest"; \
+	fi; \
+	docker build \
+		-f examples/dockers/enterprise-single-node/Dockerfile \
+		$$TAG_ARGS \
+		--build-arg VERSION=$(ENTERPRISE_EFFECTIVE_TAG) \
+		.; \
+	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
+		$(ECHO) "$(GREEN)Built enterprise image: $(ENTERPRISE_EFFECTIVE_IMAGE):$(ENTERPRISE_EFFECTIVE_TAG), $(ENTERPRISE_EFFECTIVE_IMAGE):latest$(NC)"; \
+	else \
+		$(ECHO) "$(GREEN)Built enterprise image: $(ENTERPRISE_EFFECTIVE_IMAGE):latest$(NC)"; \
+	fi
+
+docker-push-enterprise-cnb: ## Build and push the enterprise single-node image to CNB Docker registry
+	@$(ECHO) "$(GREEN)Building and pushing enterprise single-node Docker image to CNB...$(NC)"
+	@if [ -z "$(CNB_REPO_SLUG_LOWERCASE)" ]; then \
+		$(ECHO) "$(RED)Error: CNB_REPO_SLUG_LOWERCASE is required, e.g. org/project$(NC)"; \
+		exit 1; \
+	fi
+	$(eval ENTERPRISE_GIT_SHA=$(shell git rev-parse --short HEAD))
+	$(eval ENTERPRISE_EFFECTIVE_TAG=$(if $(ENTERPRISE_TAG),$(ENTERPRISE_TAG),$(ENTERPRISE_GIT_SHA)))
+	$(eval CNB_IMAGE_PATH=$(shell if [ -n "$(CNB_IMAGE_NAME)" ]; then printf '%s/%s/%s' "$(CNB_DOCKER_REGISTRY)" "$(CNB_REPO_SLUG_LOWERCASE)" "$(CNB_IMAGE_NAME)"; else printf '%s/%s' "$(CNB_DOCKER_REGISTRY)" "$(CNB_REPO_SLUG_LOWERCASE)"; fi))
+	@TAG_ARGS="-t $(CNB_IMAGE_PATH):$(ENTERPRISE_EFFECTIVE_TAG)"; \
+	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
+		TAG_ARGS="$$TAG_ARGS -t $(CNB_IMAGE_PATH):latest"; \
+	fi; \
+	docker build \
+		-f examples/dockers/enterprise-single-node/Dockerfile \
+		$$TAG_ARGS \
+		--build-arg VERSION=$(ENTERPRISE_EFFECTIVE_TAG) \
+		.; \
+	docker push $(CNB_IMAGE_PATH):$(ENTERPRISE_EFFECTIVE_TAG); \
+	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
+		docker push $(CNB_IMAGE_PATH):latest; \
+		$(ECHO) "$(GREEN)Pushed CNB enterprise image: $(CNB_IMAGE_PATH):$(ENTERPRISE_EFFECTIVE_TAG), $(CNB_IMAGE_PATH):latest$(NC)"; \
+	else \
+		$(ECHO) "$(GREEN)Pushed CNB enterprise image: $(CNB_IMAGE_PATH):latest$(NC)"; \
+	fi
 
 docs: ## Prepare local docs
 	@$(ECHO) "$(GREEN)Preparing local docs...$(NC)"
