@@ -14,7 +14,7 @@ COPY ui/ ./
 RUN npx next build
 RUN node scripts/fix-paths.js
 
-FROM golang:1.26.1-alpine3.23 AS builder
+FROM golang:1.26.2-alpine3.23 AS builder
 WORKDIR /build
 
 RUN apk add --no-cache gcc musl-dev sqlite-dev binutils binutils-gold

@@ -18,6 +18,7 @@ ENTERPRISE_TAG ?=
 CNB_DOCKER_REGISTRY ?= docker.cnb.cool
 CNB_REPO_SLUG_LOWERCASE ?=
 CNB_IMAGE_NAME ?=
+GO_BUILD_DOCKER_IMAGE ?= golang:1.26.2-alpine3.23
 
 # Colors for output
 RED=\033[0;31m
@@ -235,35 +236,35 @@ _build-with-docker: # Internal target for Docker-based cross-compilation
 	if [ "$(TARGET_OS)" = "linux" ]; then \
 		if [ -n "$(DYNAMIC)" ]; then \
 			$(ECHO) "$(CYAN)Building for $(TARGET_OS)/$(TARGET_ARCH) in Docker container with dynamic linking...$(NC)"; \
-			docker run --rm \
-				--platform linux/$(TARGET_ARCH) \
-				-v "$(shell pwd):/workspace" \
-				-w /workspace/transports/bifrost-http \
-				-e CGO_ENABLED=1 \
-				-e GOOS=$(TARGET_OS) \
-				-e GOARCH=$(TARGET_ARCH) \
-				 $(if $(LOCAL),,-e GOWORK=off) \
-				golang:1.26.1-alpine3.23 \
-				sh -c "apk add --no-cache gcc musl-dev && \
-				go build \
-					-ldflags='-w -s -X main.Version=v$(VERSION)' \
+				docker run --rm \
+					--platform linux/$(TARGET_ARCH) \
+					-v "$(shell pwd):/workspace" \
+					-w /workspace/transports/bifrost-http \
+					-e CGO_ENABLED=1 \
+					-e GOOS=$(TARGET_OS) \
+					-e GOARCH=$(TARGET_ARCH) \
+					 $(if $(LOCAL),,-e GOWORK=off) \
+					$(GO_BUILD_DOCKER_IMAGE) \
+					sh -c "apk add --no-cache gcc musl-dev && \
+					go build \
+						-ldflags='-w -s -X main.Version=v$(VERSION)' \
 					-a -trimpath \
 					-o ../../tmp/bifrost-http \
 					."; \
 		else \
 			$(ECHO) "$(CYAN)Building for $(TARGET_OS)/$(TARGET_ARCH) in Docker container...$(NC)"; \
-			docker run --rm \
-				--platform linux/$(TARGET_ARCH) \
-				-v "$(shell pwd):/workspace" \
-				-w /workspace/transports/bifrost-http \
-				-e CGO_ENABLED=1 \
-				-e GOOS=$(TARGET_OS) \
-				-e GOARCH=$(TARGET_ARCH) \
-				 $(if $(LOCAL),,-e GOWORK=off) \
-				golang:1.26.1-alpine3.23 \
-				sh -c "apk add --no-cache gcc musl-dev && \
-				go build \
-					-ldflags='-w -s -extldflags "-static" -X main.Version=v$(VERSION)' \
+				docker run --rm \
+					--platform linux/$(TARGET_ARCH) \
+					-v "$(shell pwd):/workspace" \
+					-w /workspace/transports/bifrost-http \
+					-e CGO_ENABLED=1 \
+					-e GOOS=$(TARGET_OS) \
+					-e GOARCH=$(TARGET_ARCH) \
+					 $(if $(LOCAL),,-e GOWORK=off) \
+					$(GO_BUILD_DOCKER_IMAGE) \
+					sh -c "apk add --no-cache gcc musl-dev && \
+					go build \
+						-ldflags='-w -s -extldflags "-static" -X main.Version=v$(VERSION)' \
 					-a -trimpath \
 					-tags sqlite_static \
 					-o ../../tmp/bifrost-http \
@@ -301,7 +302,8 @@ docker-image-enterprise: ## Build the enterprise single-node image from the curr
 	$(eval ENTERPRISE_GIT_SHA=$(shell git rev-parse --short HEAD))
 	$(eval ENTERPRISE_EFFECTIVE_TAG=$(if $(ENTERPRISE_TAG),$(ENTERPRISE_TAG),$(ENTERPRISE_GIT_SHA)))
 	$(eval ENTERPRISE_EFFECTIVE_IMAGE=$(if $(ENTERPRISE_IMAGE),$(ENTERPRISE_IMAGE),bifrost-enterprise))
-	@TAG_ARGS="-t $(ENTERPRISE_EFFECTIVE_IMAGE):$(ENTERPRISE_EFFECTIVE_TAG)"; \
+	@set -e; \
+	TAG_ARGS="-t $(ENTERPRISE_EFFECTIVE_IMAGE):$(ENTERPRISE_EFFECTIVE_TAG)"; \
 	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
 		TAG_ARGS="$$TAG_ARGS -t $(ENTERPRISE_EFFECTIVE_IMAGE):latest"; \
 	fi; \
@@ -325,7 +327,8 @@ docker-push-enterprise-cnb: ## Build and push the enterprise single-node image t
 	$(eval ENTERPRISE_GIT_SHA=$(shell git rev-parse --short HEAD))
 	$(eval ENTERPRISE_EFFECTIVE_TAG=$(if $(ENTERPRISE_TAG),$(ENTERPRISE_TAG),$(ENTERPRISE_GIT_SHA)))
 	$(eval CNB_IMAGE_PATH=$(shell if [ -n "$(CNB_IMAGE_NAME)" ]; then printf '%s/%s/%s' "$(CNB_DOCKER_REGISTRY)" "$(CNB_REPO_SLUG_LOWERCASE)" "$(CNB_IMAGE_NAME)"; else printf '%s/%s' "$(CNB_DOCKER_REGISTRY)" "$(CNB_REPO_SLUG_LOWERCASE)"; fi))
-	@TAG_ARGS="-t $(CNB_IMAGE_PATH):$(ENTERPRISE_EFFECTIVE_TAG)"; \
+	@set -e; \
+	TAG_ARGS="-t $(CNB_IMAGE_PATH):$(ENTERPRISE_EFFECTIVE_TAG)"; \
 	if [ "$(ENTERPRISE_EFFECTIVE_TAG)" != "latest" ]; then \
 		TAG_ARGS="$$TAG_ARGS -t $(CNB_IMAGE_PATH):latest"; \
 	fi; \
