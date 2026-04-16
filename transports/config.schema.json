@@ -1864,6 +1864,10 @@
           }
         }
       },
+      "anyOf": [
+        { "required": ["mcp_client_id"] },
+        { "required": ["mcp_client_name"] }
+      ],
       "additionalProperties": false
     },
     "auth_config": {
@@ -2383,6 +2387,13 @@
                 "auth_credentials": {
                   "type": "string",
                   "description": "Authentication credentials (can use env. prefix)"
+                },
+                "deployments": {
+                  "type": "object",
+                  "description": "Mapping of model identifiers to deployed model versions or inference profiles",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -2747,6 +2758,7 @@
             "stdio",
             "http",
             "sse",
+            "websocket",
             "inprocess"
           ],
           "description": "Connection type for MCP client"

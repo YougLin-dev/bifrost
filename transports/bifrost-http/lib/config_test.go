@@ -15756,9 +15756,11 @@ func TestConfigSchemaSyncTopLevel(t *testing.T) {
 		"audit_logs":                   true,
 		"cluster_config":               true,
 		"saml_config":                  true,
+		"scim_config":                  true,
 		"load_balancer_config":         true,
 		"guardrails_config":            true,
 		"large_payload_optimization":   true,
+		"version":                      true,
 	}
 
 	schema := loadJSONSchema(t)

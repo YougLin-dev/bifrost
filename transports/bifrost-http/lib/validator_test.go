@@ -1202,7 +1202,7 @@ func TestValidateConfigSchema_OtelPlugin_Valid(t *testing.T) {
 				"name": "otel",
 				"config": {
 					"collector_url": "http://localhost:4318",
-					"trace_type": "otel",
+					"trace_type": "genai_extension",
 					"protocol": "http"
 				}
 			}

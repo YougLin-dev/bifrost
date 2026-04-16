@@ -46,9 +46,10 @@ type MCPConfig struct {
 }
 
 type MCPToolManagerConfig struct {
-	ToolExecutionTimeout time.Duration        `json:"tool_execution_timeout"`
-	MaxAgentDepth        int                  `json:"max_agent_depth"`
-	CodeModeBindingLevel CodeModeBindingLevel `json:"code_mode_binding_level,omitempty"` // How tools are exposed in VFS: "server" or "tool"
+	ToolExecutionTimeout  time.Duration        `json:"tool_execution_timeout"`
+	MaxAgentDepth         int                  `json:"max_agent_depth"`
+	CodeModeBindingLevel  CodeModeBindingLevel `json:"code_mode_binding_level,omitempty"`  // How tools are exposed in VFS: "server" or "tool"
+	DisableAutoToolInject bool                 `json:"disable_auto_tool_inject,omitempty"` // When true, MCP tools are not automatically injected into requests
 }
 
 const (
@@ -75,7 +76,7 @@ const (
 
 // MCPClientConfig defines tool filtering for an MCP client.
 type MCPClientConfig struct {
-	ID               string            `json:"client_id"`                          // Client ID
+	ID               string            `json:"client_id"`                   // Client ID
 	Name             string            `json:"name"`                        // Client name
 	IsCodeModeClient bool              `json:"is_code_mode_client"`         // Whether the client is a code mode client
 	ConnectionType   MCPConnectionType `json:"connection_type"`             // How to connect (HTTP, STDIO, SSE, or InProcess)
@@ -99,10 +100,12 @@ type MCPClientConfig struct {
 	// - nil/omitted => treated as [] (no tools)
 	// - ["tool1", "tool2"] => auto-execute only the specified tools
 	// Note: If a tool is in ToolsToAutoExecute but not in ToolsToExecute, it will be skipped.
-	IsPingAvailable  bool               `json:"is_ping_available"`            // Whether the MCP server supports ping for health checks (default: true). If false, uses listTools for health checks.
-	ToolSyncInterval time.Duration      `json:"tool_sync_interval,omitempty"` // Per-client override for tool sync interval (0 = use global, negative = disabled)
-	ToolPricing      map[string]float64 `json:"tool_pricing,omitempty"`       // Tool pricing for each tool (cost per execution)
-	ConfigHash       string             `json:"-"`                            // Config hash for reconciliation (not serialized)
+	IsPingAvailable       bool               `json:"is_ping_available"`                   // Whether the MCP server supports ping for health checks (default: true). If false, uses listTools for health checks.
+	ToolSyncInterval      time.Duration      `json:"tool_sync_interval,omitempty"`        // Per-client override for tool sync interval (0 = use global, negative = disabled)
+	ToolPricing           map[string]float64 `json:"tool_pricing,omitempty"`              // Tool pricing for each tool (cost per execution)
+	AllowedExtraHeaders   []string           `json:"allowed_extra_headers,omitempty"`     // Allowlist of request-level headers that callers may forward to this MCP server
+	AllowOnAllVirtualKeys bool               `json:"allow_on_all_virtual_keys,omitempty"` // When true, this MCP server is accessible to all virtual keys
+	ConfigHash            string             `json:"-"`                                   // Config hash for reconciliation (not serialized)
 }
 
 // NewMCPClientConfigFromMap creates a new MCP client config from a map[string]any.
