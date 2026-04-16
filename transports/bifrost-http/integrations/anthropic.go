@@ -401,15 +401,18 @@ func shouldUsePassthrough(ctx *schemas.BifrostContext, provider schemas.ModelPro
 }
 
 func isClaudeModel(model, deployment, provider string) bool {
-	customAnthropicCompatible := provider != "" &&
-		!bifrost.IsStandardProvider(schemas.ModelProvider(provider)) &&
-		(strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(deployment, "anthropic/"))
-	return (provider == string(schemas.Anthropic) ||
-		(provider == "" && schemas.IsAnthropicModel(model))) ||
-		(provider == string(schemas.GMI) && (strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(deployment, "anthropic/"))) ||
-		customAnthropicCompatible ||
-		(provider == string(schemas.Vertex) && (schemas.IsAnthropicModel(model) || schemas.IsAnthropicModel(deployment))) ||
-		(provider == string(schemas.Azure) && (schemas.IsAnthropicModel(model) || schemas.IsAnthropicModel(deployment)))
+	if provider == "" {
+		return schemas.IsAnthropicModel(model)
+	}
+
+	switch bifrost.GetBaseProviderType(schemas.ModelProvider(provider)) {
+	case schemas.Anthropic, schemas.Vertex, schemas.Azure:
+		return schemas.IsAnthropicModel(model) || schemas.IsAnthropicModel(deployment)
+	case schemas.GMI:
+		return strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(deployment, "anthropic/")
+	default:
+		return false
+	}
 }
 
 // extractAnthropicListModelsParams extracts query parameters for list models request

@@ -3164,6 +3164,7 @@ func (bifrost *Bifrost) RemoveProvider(providerKey schemas.ModelProvider) error 
 	}
 
 	bifrost.logger.Info("successfully removed provider %s", providerKey)
+	UnregisterCustomProviderBaseType(providerKey)
 	schemas.UnregisterKnownProvider(providerKey)
 	return nil
 }
@@ -3344,6 +3345,7 @@ transferComplete:
 			} else {
 				bifrost.logger.Debug("successfully added new provider instance for %s to providers slice", providerKey)
 			}
+			SyncCustomProviderBaseType(providerKey, providerConfig)
 			break
 		}
 		// Retrying as swapping did not work (likely due to concurrent modification)
@@ -3729,6 +3731,7 @@ func (bifrost *Bifrost) prepareProvider(providerKey schemas.ModelProvider, confi
 	}
 
 	schemas.RegisterKnownProvider(providerKey)
+	SyncCustomProviderBaseType(providerKey, config)
 
 	for range config.ConcurrencyAndBufferSize.Concurrency {
 		currentWaitGroup.Add(1)
@@ -5161,8 +5164,23 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 
 // handleProviderRequest handles the request to the provider based on the request type
 // key is used for single-key operations, keys is used for batch/file operations that need multiple keys
-func (bifrost *Bifrost) handleProviderRequest(provider schemas.Provider, config *schemas.ProviderConfig, req *ChannelMessage, key schemas.Key, keys []schemas.Key) (*schemas.BifrostResponse, *schemas.BifrostError) {
-	response := &schemas.BifrostResponse{}
+func (bifrost *Bifrost) handleProviderRequest(provider schemas.Provider, config *schemas.ProviderConfig, req *ChannelMessage, key schemas.Key, keys []schemas.Key) (response *schemas.BifrostResponse, bifrostError *schemas.BifrostError) {
+	response = &schemas.BifrostResponse{}
+	_, requestModel, _ := req.BifrostRequest.GetRequestFields()
+	defer func() {
+		if bifrostError == nil {
+			return
+		}
+		if bifrostError.ExtraFields.Provider == "" {
+			bifrostError.ExtraFields.Provider = provider.GetProviderKey()
+		}
+		if bifrostError.ExtraFields.RequestType == "" {
+			bifrostError.ExtraFields.RequestType = req.RequestType
+		}
+		if bifrostError.ExtraFields.ModelRequested == "" {
+			bifrostError.ExtraFields.ModelRequested = requestModel
+		}
+	}()
 	switch req.RequestType {
 	case schemas.ListModelsRequest:
 		listModelsResponse, bifrostError := provider.ListModels(req.Context, keys, req.BifrostRequest.ListModelsRequest)

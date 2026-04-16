@@ -2,6 +2,7 @@ package gmi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -177,6 +178,400 @@ func (provider *GMIProvider) buildAnthropicHeaders(ctx *schemas.BifrostContext, 
 		headers[anthropic.AnthropicBetaHeader] = strings.Join(betaHeaders, ",")
 	}
 	return headers
+}
+
+func shallowCopyExtraParams(extraParams map[string]interface{}) map[string]interface{} {
+	if len(extraParams) == 0 {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(extraParams))
+	for key, value := range extraParams {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	return append([]string(nil), values...)
+}
+
+func clearLargePayloadPassthroughContext(ctx *schemas.BifrostContext) {
+	if ctx == nil {
+		return
+	}
+	for _, key := range []schemas.BifrostContextKey{
+		schemas.BifrostContextKeyLargePayloadMode,
+		schemas.BifrostContextKeyLargePayloadReader,
+		schemas.BifrostContextKeyLargePayloadContentLength,
+		schemas.BifrostContextKeyLargePayloadContentType,
+		schemas.BifrostContextKeyLargePayloadMetadata,
+	} {
+		ctx.ClearValue(key)
+	}
+}
+
+func largePayloadSourceIntegration(ctx *schemas.BifrostContext) string {
+	if ctx == nil {
+		return ""
+	}
+	integrationType, _ := ctx.Value(schemas.BifrostContextKeyIntegrationType).(string)
+	return strings.TrimSpace(integrationType)
+}
+
+func shouldMaterializeLargePayloadChatRequest(ctx *schemas.BifrostContext, family modelFamily) bool {
+	if !providerUtils.IsLargePayloadPassthroughEnabled(ctx) {
+		return false
+	}
+	return largePayloadSourceIntegration(ctx) == "openai" && family != modelFamilyChatCompletions
+}
+
+func shouldMaterializeLargePayloadResponsesRequest(ctx *schemas.BifrostContext, family modelFamily) bool {
+	if !providerUtils.IsLargePayloadPassthroughEnabled(ctx) {
+		return false
+	}
+
+	switch largePayloadSourceIntegration(ctx) {
+	case "openai":
+		return family != modelFamilyResponses
+	case "anthropic":
+		return family != modelFamilyAnthropic
+	case "genai":
+		return family != modelFamilyGoogle
+	default:
+		return false
+	}
+}
+
+func materializeLargePayloadBody(ctx *schemas.BifrostContext, providerKey schemas.ModelProvider) ([]byte, *schemas.BifrostError) {
+	reader, _ := ctx.Value(schemas.BifrostContextKeyLargePayloadReader).(io.Reader)
+	if reader == nil {
+		return nil, providerUtils.NewBifrostOperationError("large payload reader is not provided", nil, providerKey)
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, providerUtils.NewBifrostOperationError(schemas.ErrRequestBodyConversion, err, providerKey)
+	}
+
+	clearLargePayloadPassthroughContext(ctx)
+	return body, nil
+}
+
+func materializeLargePayloadChatRequest(ctx *schemas.BifrostContext, request *schemas.BifrostChatRequest, providerKey schemas.ModelProvider) (*schemas.BifrostChatRequest, *schemas.BifrostError) {
+	if !providerUtils.IsLargePayloadPassthroughEnabled(ctx) {
+		return request, nil
+	}
+
+	rawBody, bifrostErr := materializeLargePayloadBody(ctx, providerKey)
+	if bifrostErr != nil {
+		return nil, bifrostErr
+	}
+
+	switch largePayloadSourceIntegration(ctx) {
+	case "openai":
+		var openAIReq openai.OpenAIChatRequest
+		if err := sonic.Unmarshal(rawBody, &openAIReq); err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrRequestBodyConversion, err, providerKey)
+		}
+
+		parsedRequest := openAIReq.ToBifrostChatRequest(ctx)
+		if parsedRequest == nil {
+			return nil, providerUtils.NewBifrostOperationError("request body is not provided", nil, providerKey)
+		}
+		if parsedRequest.Provider == "" {
+			parsedRequest.Provider = request.Provider
+		}
+		if parsedRequest.Model == "" {
+			parsedRequest.Model = request.Model
+		}
+		if len(parsedRequest.Fallbacks) == 0 && len(request.Fallbacks) > 0 {
+			parsedRequest.Fallbacks = request.Fallbacks
+		}
+		parsedRequest.RawRequestBody = rawBody
+		return parsedRequest, nil
+
+	default:
+		return nil, providerUtils.NewBifrostOperationError("unsupported large payload chat integration for gmi", nil, providerKey)
+	}
+}
+
+func materializeLargePayloadResponsesRequest(ctx *schemas.BifrostContext, request *schemas.BifrostResponsesRequest, providerKey schemas.ModelProvider) (*schemas.BifrostResponsesRequest, *schemas.BifrostError) {
+	if !providerUtils.IsLargePayloadPassthroughEnabled(ctx) {
+		return request, nil
+	}
+
+	rawBody, bifrostErr := materializeLargePayloadBody(ctx, providerKey)
+	if bifrostErr != nil {
+		return nil, bifrostErr
+	}
+
+	var parsedRequest *schemas.BifrostResponsesRequest
+	switch largePayloadSourceIntegration(ctx) {
+	case "openai":
+		var openAIReq openai.OpenAIResponsesRequest
+		if err := sonic.Unmarshal(rawBody, &openAIReq); err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrRequestBodyConversion, err, providerKey)
+		}
+		parsedRequest = openAIReq.ToBifrostResponsesRequest(ctx)
+	case "anthropic":
+		var anthropicReq anthropic.AnthropicMessageRequest
+		if err := sonic.Unmarshal(rawBody, &anthropicReq); err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrRequestBodyConversion, err, providerKey)
+		}
+		parsedRequest = anthropicReq.ToBifrostResponsesRequest(ctx)
+	case "genai":
+		var geminiReq gemini.GeminiGenerationRequest
+		if err := sonic.Unmarshal(rawBody, &geminiReq); err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrRequestBodyConversion, err, providerKey)
+		}
+		if strings.TrimSpace(geminiReq.Model) == "" {
+			geminiReq.Model = request.Model
+		}
+		parsedRequest = geminiReq.ToBifrostResponsesRequest(ctx)
+	default:
+		return nil, providerUtils.NewBifrostOperationError("unsupported large payload responses integration for gmi", nil, providerKey)
+	}
+
+	if parsedRequest == nil {
+		return nil, providerUtils.NewBifrostOperationError("request body is not provided", nil, providerKey)
+	}
+	if parsedRequest.Provider == "" {
+		parsedRequest.Provider = request.Provider
+	}
+	if parsedRequest.Model == "" {
+		parsedRequest.Model = request.Model
+	}
+	if len(parsedRequest.Fallbacks) == 0 && len(request.Fallbacks) > 0 {
+		parsedRequest.Fallbacks = request.Fallbacks
+	}
+	parsedRequest.RawRequestBody = rawBody
+
+	return parsedRequest, nil
+}
+
+func temporarilySetContextValue(ctx *schemas.BifrostContext, key schemas.BifrostContextKey, value any) func() {
+	if ctx == nil {
+		return func() {}
+	}
+	previous := ctx.GetAndSetValue(key, value)
+	return func() {
+		if previous == nil {
+			ctx.ClearValue(key)
+			return
+		}
+		ctx.SetValue(key, previous)
+	}
+}
+
+func chatResponseFormatToResponsesTextFormat(responseFormat *interface{}) *schemas.ResponsesTextConfigFormat {
+	if responseFormat == nil || *responseFormat == nil {
+		return nil
+	}
+
+	data, err := sonic.Marshal(*responseFormat)
+	if err != nil {
+		return nil
+	}
+
+	var envelope struct {
+		Type       string          `json:"type"`
+		JSONSchema json.RawMessage `json:"json_schema,omitempty"`
+	}
+	if err := sonic.Unmarshal(data, &envelope); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(envelope.Type) == "" {
+		return nil
+	}
+
+	if envelope.Type == "json_schema" {
+		textFormat := &schemas.ResponsesTextConfigFormat{Type: envelope.Type}
+		if len(envelope.JSONSchema) > 0 {
+			var schemaFormat schemas.ResponsesTextConfigFormatJSONSchema
+			if err := sonic.Unmarshal(envelope.JSONSchema, &schemaFormat); err == nil {
+				textFormat.JSONSchema = &schemaFormat
+			}
+		}
+		return textFormat
+	}
+
+	var textFormat schemas.ResponsesTextConfigFormat
+	if err := sonic.Unmarshal(data, &textFormat); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(textFormat.Type) == "" {
+		return nil
+	}
+	return &textFormat
+}
+
+func responsesTextFormatToChatResponseFormat(textFormat *schemas.ResponsesTextConfigFormat) *interface{} {
+	if textFormat == nil || strings.TrimSpace(textFormat.Type) == "" {
+		return nil
+	}
+
+	if textFormat.Type == "json_schema" && textFormat.JSONSchema != nil {
+		jsonSchema := *textFormat.JSONSchema
+		if jsonSchema.Name == nil {
+			jsonSchema.Name = textFormat.Name
+		}
+		if jsonSchema.Strict == nil {
+			jsonSchema.Strict = textFormat.Strict
+		}
+
+		value := interface{}(map[string]interface{}{
+			"type":        textFormat.Type,
+			"json_schema": jsonSchema,
+		})
+		return &value
+	}
+
+	data, err := sonic.Marshal(textFormat)
+	if err != nil {
+		return nil
+	}
+	var value interface{}
+	if err := sonic.Unmarshal(data, &value); err != nil {
+		return nil
+	}
+
+	return &value
+}
+
+func chatRequestToGMIResponsesRequest(request *schemas.BifrostChatRequest) *schemas.BifrostResponsesRequest {
+	responsesReq := request.ToResponsesRequest()
+	if request == nil || request.Params == nil {
+		return responsesReq
+	}
+	if responsesReq.Params == nil {
+		responsesReq.Params = &schemas.ResponsesParameters{}
+	}
+
+	responsesReq.Params.User = request.Params.User
+
+	if textFormat := chatResponseFormatToResponsesTextFormat(request.Params.ResponseFormat); textFormat != nil {
+		if responsesReq.Params.Text == nil {
+			responsesReq.Params.Text = &schemas.ResponsesTextConfig{}
+		}
+		responsesReq.Params.Text.Format = textFormat
+	}
+
+	if len(request.Params.Stop) > 0 {
+		extraParams := shallowCopyExtraParams(responsesReq.Params.ExtraParams)
+		if extraParams == nil {
+			extraParams = make(map[string]interface{}, 1)
+		}
+		extraParams["stop"] = cloneStringSlice(request.Params.Stop)
+		responsesReq.Params.ExtraParams = extraParams
+	}
+
+	return responsesReq
+}
+
+func responsesRequestToGMIChatRequest(request *schemas.BifrostResponsesRequest) *schemas.BifrostChatRequest {
+	chatReq := request.ToChatRequest()
+	if request == nil || request.Params == nil {
+		return chatReq
+	}
+	if chatReq.Params == nil {
+		chatReq.Params = &schemas.ChatParameters{}
+	}
+
+	chatReq.Params.User = request.Params.User
+
+	if request.Params.Text != nil && request.Params.Text.Format != nil {
+		chatReq.Params.ResponseFormat = responsesTextFormatToChatResponseFormat(request.Params.Text.Format)
+	}
+
+	return chatReq
+}
+
+func marshalOpenAIResponsesRequestForGMI(request *schemas.BifrostResponsesRequest, stream bool, providerKey schemas.ModelProvider) ([]byte, *schemas.BifrostError) {
+	openAIReq := openai.ToOpenAIResponsesRequest(request)
+	if openAIReq == nil {
+		return nil, providerUtils.NewBifrostOperationError("request body is not provided", nil, providerKey)
+	}
+	if stream {
+		openAIReq.Stream = schemas.Ptr(true)
+	}
+
+	jsonBody, err := schemas.MarshalSortedIndent(openAIReq, "", "  ")
+	if err != nil {
+		return nil, providerUtils.NewBifrostOperationError(schemas.ErrProviderRequestMarshal, err, providerKey)
+	}
+
+	if extraParams := openAIReq.GetExtraParams(); len(extraParams) > 0 {
+		jsonBody, err = providerUtils.MergeExtraParamsIntoJSON(jsonBody, extraParams)
+		if err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrProviderRequestMarshal, err, providerKey)
+		}
+	}
+
+	return jsonBody, nil
+}
+
+func marshalOpenAIChatRequestForGMI(ctx *schemas.BifrostContext, request *schemas.BifrostChatRequest, stream bool, providerKey schemas.ModelProvider) ([]byte, *schemas.BifrostError) {
+	openAIReq := openai.ToOpenAIChatRequest(ctx, request)
+	if openAIReq == nil {
+		return nil, providerUtils.NewBifrostOperationError("request body is not provided", nil, providerKey)
+	}
+	if stream {
+		openAIReq.Stream = schemas.Ptr(true)
+	}
+
+	jsonBody, err := schemas.MarshalSortedIndent(openAIReq, "", "  ")
+	if err != nil {
+		return nil, providerUtils.NewBifrostOperationError(schemas.ErrProviderRequestMarshal, err, providerKey)
+	}
+
+	if extraParams := openAIReq.GetExtraParams(); len(extraParams) > 0 {
+		jsonBody, err = providerUtils.MergeExtraParamsIntoJSON(jsonBody, extraParams)
+		if err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrProviderRequestMarshal, err, providerKey)
+		}
+	}
+
+	return jsonBody, nil
+}
+
+func responsesStreamEventToBifrostError(response *schemas.BifrostResponsesStreamResponse, providerKey schemas.ModelProvider, requestType schemas.RequestType, model string) *schemas.BifrostError {
+	bifrostErr := &schemas.BifrostError{
+		IsBifrostError: false,
+		Error:          &schemas.ErrorField{},
+		ExtraFields: schemas.BifrostErrorExtraFields{
+			Provider:       providerKey,
+			ModelRequested: model,
+			RequestType:    requestType,
+		},
+	}
+
+	if response != nil && response.Response != nil && response.Response.Error != nil {
+		if response.Response.Error.Message != "" {
+			bifrostErr.Error.Message = response.Response.Error.Message
+		}
+		if response.Response.Error.Code != "" {
+			bifrostErr.Error.Code = schemas.Ptr(response.Response.Error.Code)
+		}
+	}
+	if response != nil {
+		if bifrostErr.Error.Message == "" && response.Message != nil {
+			bifrostErr.Error.Message = *response.Message
+		}
+		if bifrostErr.Error.Code == nil && response.Code != nil {
+			bifrostErr.Error.Code = response.Code
+		}
+		if response.Param != nil {
+			bifrostErr.Error.Param = response.Param
+		}
+	}
+	if bifrostErr.Error.Message == "" {
+		bifrostErr.Error.Message = "provider returned failed response event"
+	}
+
+	return bifrostErr
 }
 
 func parseAnthropicCompatibleError(resp *fasthttp.Response, meta *providerUtils.RequestMetadata) *schemas.BifrostError {
@@ -427,10 +822,23 @@ func (provider *GMIProvider) ChatCompletion(ctx *schemas.BifrostContext, key sch
 	if bifrostErr != nil {
 		return nil, bifrostErr
 	}
+	if shouldMaterializeLargePayloadChatRequest(ctx, model.family) {
+		request, bifrostErr = materializeLargePayloadChatRequest(ctx, request, provider.GetProviderKey())
+		if bifrostErr != nil {
+			return nil, bifrostErr
+		}
+	}
 
 	switch model.family {
 	case modelFamilyResponses:
-		responsesReq := request.ToResponsesRequest()
+		responsesReq := chatRequestToGMIResponsesRequest(request)
+		jsonBody, marshalErr := marshalOpenAIResponsesRequestForGMI(responsesReq, false, provider.GetProviderKey())
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		responsesReq.RawRequestBody = jsonBody
+		restoreRawRequestBody := temporarilySetContextValue(ctx, schemas.BifrostContextKeyUseRawRequestBody, true)
+		defer restoreRawRequestBody()
 		response, bifrostErr := openai.HandleOpenAIResponsesRequest(
 			ctx,
 			provider.client,
@@ -646,6 +1054,12 @@ func (provider *GMIProvider) Responses(ctx *schemas.BifrostContext, key schemas.
 	if bifrostErr != nil {
 		return nil, bifrostErr
 	}
+	if shouldMaterializeLargePayloadResponsesRequest(ctx, model.family) {
+		request, bifrostErr = materializeLargePayloadResponsesRequest(ctx, request, provider.GetProviderKey())
+		if bifrostErr != nil {
+			return nil, bifrostErr
+		}
+	}
 
 	switch model.family {
 	case modelFamilyResponses:
@@ -671,11 +1085,19 @@ func (provider *GMIProvider) Responses(ctx *schemas.BifrostContext, key schemas.
 		return response, nil
 
 	case modelFamilyChatCompletions:
+		chatRequest := responsesRequestToGMIChatRequest(request)
+		jsonBody, marshalErr := marshalOpenAIChatRequestForGMI(ctx, chatRequest, false, provider.GetProviderKey())
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		chatRequest.RawRequestBody = jsonBody
+		restoreRawRequestBody := temporarilySetContextValue(ctx, schemas.BifrostContextKeyUseRawRequestBody, true)
+		defer restoreRawRequestBody()
 		chatResponse, bifrostErr := openai.HandleOpenAIChatCompletionRequest(
 			ctx,
 			provider.client,
 			provider.buildRequestURL(ctx, "/v1/chat/completions", schemas.ResponsesRequest),
-			request.ToChatRequest(),
+			chatRequest,
 			key,
 			provider.networkConfig.ExtraHeaders,
 			providerUtils.ShouldSendBackRawRequest(ctx, provider.sendBackRawRequest),
@@ -1076,21 +1498,10 @@ func (provider *GMIProvider) handleOpenAIChatCompletionStreaming(
 	request *schemas.BifrostChatRequest,
 	model *resolvedModel,
 ) (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
-	responsesReq := request.ToResponsesRequest()
-	jsonBody, bifrostErr := providerUtils.CheckContextAndGetRequestBody(
-		ctx,
-		responsesReq,
-		func() (providerUtils.RequestBodyWithExtraParams, error) {
-			reqBody := openai.ToOpenAIResponsesRequest(responsesReq)
-			if reqBody != nil {
-				reqBody.Stream = schemas.Ptr(true)
-			}
-			return reqBody, nil
-		},
-		provider.GetProviderKey(),
-	)
-	if bifrostErr != nil {
-		return nil, bifrostErr
+	responsesReq := chatRequestToGMIResponsesRequest(request)
+	jsonBody, marshalErr := marshalOpenAIResponsesRequestForGMI(responsesReq, true, provider.GetProviderKey())
+	if marshalErr != nil {
+		return nil, marshalErr
 	}
 
 	req := fasthttp.AcquireRequest()
@@ -1108,9 +1519,7 @@ func (provider *GMIProvider) handleOpenAIChatCompletionStreaming(
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
 
-	if !providerUtils.ApplyLargePayloadRequestBodyWithModelNormalization(ctx, req, provider.GetProviderKey()) {
-		req.SetBody(jsonBody)
-	}
+	req.SetBody(jsonBody)
 
 	activeClient := providerUtils.PrepareResponseStreaming(ctx, provider.client, resp)
 	if err := activeClient.Do(req, resp); err != nil {
@@ -1197,26 +1606,18 @@ func (provider *GMIProvider) handleOpenAIChatCompletionStreaming(
 			}
 
 			if response.Type == schemas.ResponsesStreamResponseTypeError || response.Type == schemas.ResponsesStreamResponseTypeFailed {
-				bifrostErr := &schemas.BifrostError{
-					IsBifrostError: false,
-					Error:          &schemas.ErrorField{},
-					ExtraFields: schemas.BifrostErrorExtraFields{
-						Provider:       provider.GetProviderKey(),
-						ModelRequested: request.Model,
-						RequestType:    schemas.ChatCompletionStreamRequest,
-					},
-				}
-				if response.Message != nil {
-					bifrostErr.Error.Message = *response.Message
-				}
-				if response.Code != nil {
-					bifrostErr.Error.Code = response.Code
-				}
 				ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
 				providerUtils.ProcessAndSendBifrostError(
 					ctx,
 					postHookRunner,
-					providerUtils.EnrichError(ctx, bifrostErr, jsonBody, nil, provider.sendBackRawRequest, provider.sendBackRawResponse),
+					providerUtils.EnrichError(
+						ctx,
+						responsesStreamEventToBifrostError(&response, provider.GetProviderKey(), schemas.ChatCompletionStreamRequest, request.Model),
+						jsonBody,
+						nil,
+						provider.sendBackRawRequest,
+						provider.sendBackRawResponse,
+					),
 					responseChan,
 					provider.logger,
 				)
@@ -1284,6 +1685,12 @@ func (provider *GMIProvider) ChatCompletionStream(ctx *schemas.BifrostContext, p
 	model, bifrostErr := resolveModel(request.Model, provider.GetProviderKey())
 	if bifrostErr != nil {
 		return nil, bifrostErr
+	}
+	if shouldMaterializeLargePayloadChatRequest(ctx, model.family) {
+		request, bifrostErr = materializeLargePayloadChatRequest(ctx, request, provider.GetProviderKey())
+		if bifrostErr != nil {
+			return nil, bifrostErr
+		}
 	}
 
 	switch model.family {
@@ -1414,6 +1821,12 @@ func (provider *GMIProvider) ResponsesStream(ctx *schemas.BifrostContext, postHo
 	if bifrostErr != nil {
 		return nil, bifrostErr
 	}
+	if shouldMaterializeLargePayloadResponsesRequest(ctx, model.family) {
+		request, bifrostErr = materializeLargePayloadResponsesRequest(ctx, request, provider.GetProviderKey())
+		if bifrostErr != nil {
+			return nil, bifrostErr
+		}
+	}
 
 	switch model.family {
 	case modelFamilyResponses:
@@ -1441,11 +1854,19 @@ func (provider *GMIProvider) ResponsesStream(ctx *schemas.BifrostContext, postHo
 
 	case modelFamilyChatCompletions:
 		ctx.SetValue(schemas.BifrostContextKeyIsResponsesToChatCompletionFallback, true)
+		chatRequest := responsesRequestToGMIChatRequest(request)
+		jsonBody, marshalErr := marshalOpenAIChatRequestForGMI(ctx, chatRequest, true, provider.GetProviderKey())
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		chatRequest.RawRequestBody = jsonBody
+		restoreRawRequestBody := temporarilySetContextValue(ctx, schemas.BifrostContextKeyUseRawRequestBody, true)
+		defer restoreRawRequestBody()
 		return openai.HandleOpenAIChatCompletionStreaming(
 			ctx,
 			provider.client,
 			provider.buildRequestURL(ctx, "/v1/chat/completions", schemas.ResponsesStreamRequest),
-			request.ToChatRequest(),
+			chatRequest,
 			provider.authorizationHeaders(key),
 			provider.networkConfig.ExtraHeaders,
 			providerUtils.ShouldSendBackRawRequest(ctx, provider.sendBackRawRequest),

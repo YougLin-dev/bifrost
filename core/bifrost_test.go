@@ -1095,6 +1095,61 @@ func TestUpdateProvider(t *testing.T) {
 		}
 	})
 
+	t.Run("RefreshesCustomProviderBaseTypeRegistry", func(t *testing.T) {
+		const customProviderKey = schemas.ModelProvider("custom-update-gmi")
+		defer UnregisterCustomProviderBaseType(customProviderKey)
+		defer schemas.UnregisterKnownProvider(customProviderKey)
+
+		account := NewMockAccount()
+		account.configs[customProviderKey] = &schemas.ProviderConfig{
+			NetworkConfig: schemas.NetworkConfig{
+				DefaultRequestTimeoutInSeconds: 30,
+				MaxRetries:                     3,
+				RetryBackoffInitial:            500 * time.Millisecond,
+				RetryBackoffMax:                5 * time.Second,
+			},
+			ConcurrencyAndBufferSize: schemas.ConcurrencyAndBufferSize{
+				Concurrency: 1,
+				BufferSize:  10,
+			},
+			CustomProviderConfig: &schemas.CustomProviderConfig{
+				BaseProviderType: schemas.GMI,
+			},
+		}
+		account.keys[customProviderKey] = []schemas.Key{
+			{
+				ID:     "test-key-custom-update-gmi",
+				Value:  *schemas.NewEnvVar("sk-test-custom-update-gmi"),
+				Weight: 100,
+			},
+		}
+
+		ctx := context.Background()
+		bifrost, err := Init(ctx, schemas.BifrostConfig{
+			Account: account,
+			Logger:  NewDefaultLogger(schemas.LogLevelError),
+		})
+		if err != nil {
+			t.Fatalf("Failed to initialize Bifrost: %v", err)
+		}
+
+		if got := GetBaseProviderType(customProviderKey); got != schemas.GMI {
+			t.Fatalf("initial base provider = %q, want %q", got, schemas.GMI)
+		}
+
+		account.mu.Lock()
+		account.configs[customProviderKey].CustomProviderConfig.BaseProviderType = schemas.Anthropic
+		account.mu.Unlock()
+
+		if err := bifrost.UpdateProvider(customProviderKey); err != nil {
+			t.Fatalf("UpdateProvider failed: %v", err)
+		}
+
+		if got := GetBaseProviderType(customProviderKey); got != schemas.Anthropic {
+			t.Fatalf("updated base provider = %q, want %q", got, schemas.Anthropic)
+		}
+	})
+
 	t.Run("MultipleProviderUpdates", func(t *testing.T) {
 		// Test updating multiple different providers
 		account := NewMockAccount()

@@ -3,6 +3,8 @@ package integrations
 import (
 	"testing"
 
+	bifrost "github.com/maximhq/bifrost/core"
+	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -83,5 +85,32 @@ func TestFilterVertexUnsupportedBetaHeaders(t *testing.T) {
 		vals, ok := result["Anthropic-Beta"]
 		assert.True(t, ok, "header key casing should be preserved and matching should be case-insensitive")
 		assert.Equal(t, []string{"interleaved-thinking-2025-05-14"}, vals)
+	})
+}
+
+func TestIsClaudeModelRestrictsCustomProvidersByBaseType(t *testing.T) {
+	t.Run("rejects custom openai-compatible provider with anthropic namespace", func(t *testing.T) {
+		const providerKey = schemas.ModelProvider("custom-openai")
+		bifrost.RegisterCustomProviderBaseType(providerKey, schemas.OpenAI)
+		defer bifrost.UnregisterCustomProviderBaseType(providerKey)
+
+		assert.False(t, isClaudeModel("anthropic/claude-sonnet-4.6", "", string(providerKey)))
+	})
+
+	t.Run("allows custom anthropic-compatible provider", func(t *testing.T) {
+		const providerKey = schemas.ModelProvider("custom-anthropic")
+		bifrost.RegisterCustomProviderBaseType(providerKey, schemas.Anthropic)
+		defer bifrost.UnregisterCustomProviderBaseType(providerKey)
+
+		assert.True(t, isClaudeModel("claude-sonnet-4.6", "", string(providerKey)))
+	})
+
+	t.Run("allows custom gmi provider only for anthropic namespace", func(t *testing.T) {
+		const providerKey = schemas.ModelProvider("custom-gmi")
+		bifrost.RegisterCustomProviderBaseType(providerKey, schemas.GMI)
+		defer bifrost.UnregisterCustomProviderBaseType(providerKey)
+
+		assert.True(t, isClaudeModel("anthropic/claude-sonnet-4.6", "", string(providerKey)))
+		assert.False(t, isClaudeModel("openai/gpt-5.4", "", string(providerKey)))
 	})
 }

@@ -353,6 +353,108 @@ func TestChatCompletionOpenAIRoutesToResponses(t *testing.T) {
 	}
 }
 
+func TestChatCompletionOpenAIResponsesPreservesChatSpecificParameters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+
+		var payload struct {
+			Model string   `json:"model"`
+			User  string   `json:"user"`
+			Stop  []string `json:"stop"`
+			Text  struct {
+				Format struct {
+					Type   string `json:"type"`
+					Schema struct {
+						Name   string                 `json:"name"`
+						Schema map[string]interface{} `json:"schema"`
+						Strict bool                   `json:"strict"`
+					} `json:"schema"`
+				} `json:"format"`
+			} `json:"text"`
+		}
+		if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if payload.Model != "openai/gpt-5.4" {
+			t.Fatalf("model = %q, want %q", payload.Model, "openai/gpt-5.4")
+		}
+		if payload.User != "chat-user" {
+			t.Fatalf("user = %q, want %q", payload.User, "chat-user")
+		}
+		if len(payload.Stop) != 1 || payload.Stop[0] != "END" {
+			t.Fatalf("stop = %#v, want [\"END\"]", payload.Stop)
+		}
+		if payload.Text.Format.Type != "json_schema" {
+			t.Fatalf("text.format.type = %q, want %q", payload.Text.Format.Type, "json_schema")
+		}
+		if payload.Text.Format.Schema.Name != "answer" {
+			t.Fatalf("text.format.schema.name = %q, want %q", payload.Text.Format.Schema.Name, "answer")
+		}
+		if !payload.Text.Format.Schema.Strict {
+			t.Fatal("text.format.schema.strict = false, want true")
+		}
+		if properties, ok := payload.Text.Format.Schema.Schema["properties"].(map[string]interface{}); !ok || properties["answer"] == nil {
+			t.Fatalf("text.format.schema.schema.properties missing answer: %#v", payload.Text.Format.Schema.Schema)
+		}
+
+		response := &schemas.BifrostResponsesResponse{
+			ID:        schemas.Ptr("resp_chat_params"),
+			Object:    "response",
+			CreatedAt: 123,
+			Model:     "openai/gpt-5.4",
+			Output: []schemas.ResponsesMessage{
+				{
+					ID:   schemas.Ptr("msg_1"),
+					Type: schemas.Ptr(schemas.ResponsesMessageTypeMessage),
+					Role: schemas.Ptr(schemas.ResponsesInputMessageRoleAssistant),
+					Content: &schemas.ResponsesMessageContent{
+						ContentBlocks: []schemas.ResponsesMessageContentBlock{
+							{
+								Type:                              schemas.ResponsesOutputMessageContentTypeText,
+								Text:                              schemas.Ptr("ok"),
+								ResponsesOutputMessageContentText: &schemas.ResponsesOutputMessageContentText{},
+							},
+						},
+					},
+				},
+			},
+			StopReason: schemas.Ptr("stop"),
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	request := makeChatRequest("openai/gpt-5.4")
+	request.Params.User = schemas.Ptr("chat-user")
+	request.Params.Stop = []string{"END"}
+	responseFormat := interface{}(map[string]interface{}{
+		"type": "json_schema",
+		"json_schema": map[string]interface{}{
+			"name":   "answer",
+			"strict": true,
+			"schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"answer": map[string]interface{}{
+						"type": "string",
+					},
+				},
+				"required": []string{"answer"},
+			},
+		},
+	})
+	request.Params.ResponseFormat = &responseFormat
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.ChatCompletion(newTestContext(), schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("ChatCompletion() error = %v", err)
+	}
+}
+
 func TestChatCompletionOpenAICompatibleRoutesToChatCompletions(t *testing.T) {
 	t.Parallel()
 
@@ -458,6 +560,181 @@ func TestResponsesOpenAICompatibleRoutesToChatCompletions(t *testing.T) {
 	}
 	if resp.Usage == nil || resp.Usage.TotalTokens != 5 {
 		t.Fatalf("unexpected usage: %#v", resp.Usage)
+	}
+}
+
+func TestResponsesOpenAICompatiblePreservesResponseSpecificParameters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+
+		var payload struct {
+			Model          string `json:"model"`
+			User           string `json:"user"`
+			ResponseFormat struct {
+				Type       string `json:"type"`
+				JSONSchema struct {
+					Name   string                 `json:"name"`
+					Schema map[string]interface{} `json:"schema"`
+					Strict bool                   `json:"strict"`
+				} `json:"json_schema"`
+			} `json:"response_format"`
+		}
+		if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if payload.Model != "deepseek-ai/DeepSeek-R1" {
+			t.Fatalf("model = %q, want %q", payload.Model, "deepseek-ai/DeepSeek-R1")
+		}
+		if payload.User != "responses-user" {
+			t.Fatalf("user = %q, want %q", payload.User, "responses-user")
+		}
+		if payload.ResponseFormat.Type != "json_schema" {
+			t.Fatalf("response_format.type = %q, want %q", payload.ResponseFormat.Type, "json_schema")
+		}
+		if payload.ResponseFormat.JSONSchema.Name != "answer" {
+			t.Fatalf("response_format.json_schema.name = %q, want %q", payload.ResponseFormat.JSONSchema.Name, "answer")
+		}
+		if !payload.ResponseFormat.JSONSchema.Strict {
+			t.Fatal("response_format.json_schema.strict = false, want true")
+		}
+		if properties, ok := payload.ResponseFormat.JSONSchema.Schema["properties"].(map[string]interface{}); !ok || properties["answer"] == nil {
+			t.Fatalf("response_format.json_schema.schema.properties missing answer: %#v", payload.ResponseFormat.JSONSchema.Schema)
+		}
+
+		response := &schemas.BifrostChatResponse{
+			ID:      "chatcmpl_resp_params",
+			Object:  "chat.completion",
+			Created: 123,
+			Model:   "deepseek-ai/DeepSeek-R1",
+			Choices: []schemas.BifrostResponseChoice{
+				{
+					Index: 0,
+					ChatNonStreamResponseChoice: &schemas.ChatNonStreamResponseChoice{
+						Message: &schemas.ChatMessage{
+							Role: schemas.ChatMessageRoleAssistant,
+							Content: &schemas.ChatMessageContent{
+								ContentStr: schemas.Ptr("ok"),
+							},
+						},
+					},
+					FinishReason: schemas.Ptr(string(schemas.BifrostFinishReasonStop)),
+				},
+			},
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	request := makeResponsesRequest("deepseek-ai/DeepSeek-R1")
+	request.Params.User = schemas.Ptr("responses-user")
+	schema := interface{}(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"answer": map[string]interface{}{
+				"type": "string",
+			},
+		},
+		"required": []string{"answer"},
+	})
+	request.Params.Text = &schemas.ResponsesTextConfig{
+		Format: &schemas.ResponsesTextConfigFormat{
+			Type: "json_schema",
+			JSONSchema: &schemas.ResponsesTextConfigFormatJSONSchema{
+				Name:   schemas.Ptr("answer"),
+				Schema: &schema,
+				Strict: schemas.Ptr(true),
+			},
+		},
+	}
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.Responses(newTestContext(), schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("Responses() error = %v", err)
+	}
+}
+
+func TestResponsesOpenAICompatiblePreservesTopLevelStructuredOutputMetadata(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+
+		var payload struct {
+			ResponseFormat struct {
+				Type       string `json:"type"`
+				JSONSchema struct {
+					Name   string `json:"name"`
+					Strict bool   `json:"strict"`
+				} `json:"json_schema"`
+			} `json:"response_format"`
+		}
+		if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if payload.ResponseFormat.Type != "json_schema" {
+			t.Fatalf("response_format.type = %q, want %q", payload.ResponseFormat.Type, "json_schema")
+		}
+		if payload.ResponseFormat.JSONSchema.Name != "top_level_schema" {
+			t.Fatalf("response_format.json_schema.name = %q, want %q", payload.ResponseFormat.JSONSchema.Name, "top_level_schema")
+		}
+		if !payload.ResponseFormat.JSONSchema.Strict {
+			t.Fatal("response_format.json_schema.strict = false, want true")
+		}
+
+		response := &schemas.BifrostChatResponse{
+			ID:      "chatcmpl_resp_top_level_schema",
+			Object:  "chat.completion",
+			Created: 123,
+			Model:   "deepseek-ai/DeepSeek-R1",
+			Choices: []schemas.BifrostResponseChoice{
+				{
+					Index: 0,
+					ChatNonStreamResponseChoice: &schemas.ChatNonStreamResponseChoice{
+						Message: &schemas.ChatMessage{
+							Role: schemas.ChatMessageRoleAssistant,
+							Content: &schemas.ChatMessageContent{
+								ContentStr: schemas.Ptr("ok"),
+							},
+						},
+					},
+					FinishReason: schemas.Ptr(string(schemas.BifrostFinishReasonStop)),
+				},
+			},
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	schema := interface{}(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"answer": map[string]interface{}{
+				"type": "string",
+			},
+		},
+		"required": []string{"answer"},
+	})
+	request := makeResponsesRequest("deepseek-ai/DeepSeek-R1")
+	request.Params.Text = &schemas.ResponsesTextConfig{
+		Format: &schemas.ResponsesTextConfigFormat{
+			Type:   "json_schema",
+			Name:   schemas.Ptr("top_level_schema"),
+			Strict: schemas.Ptr(true),
+			JSONSchema: &schemas.ResponsesTextConfigFormatJSONSchema{
+				Schema: &schema,
+			},
+		},
+	}
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.Responses(newTestContext(), schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("Responses() error = %v", err)
 	}
 }
 
@@ -638,7 +915,344 @@ func TestChatCompletionStreamOpenAIResponsesAdapter(t *testing.T) {
 	}
 }
 
-func TestChatCompletionStreamOpenAIResponsesLargePayloadNormalizesModel(t *testing.T) {
+func TestChatCompletionStreamOpenAIResponsesPreservesChatSpecificParameters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+
+		var payload struct {
+			User string   `json:"user"`
+			Stop []string `json:"stop"`
+			Text struct {
+				Format struct {
+					Type string `json:"type"`
+				} `json:"format"`
+			} `json:"text"`
+		}
+		if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if payload.User != "stream-user" {
+			t.Fatalf("user = %q, want %q", payload.User, "stream-user")
+		}
+		if len(payload.Stop) != 1 || payload.Stop[0] != "END" {
+			t.Fatalf("stop = %#v, want [\"END\"]", payload.Stop)
+		}
+		if payload.Text.Format.Type != "json_object" {
+			t.Fatalf("text.format.type = %q, want %q", payload.Text.Format.Type, "json_object")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("response writer does not support flushing")
+		}
+
+		events := []string{
+			`{"type":"response.created","sequence_number":0,"response":{"id":"resp_stream_params","created_at":123,"model":"openai/gpt-5.4"}}`,
+			`{"type":"response.completed","sequence_number":1,"response":{"id":"resp_stream_params","created_at":123,"model":"openai/gpt-5.4","stop_reason":"stop","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}}`,
+		}
+
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	request := makeChatRequest("openai/gpt-5.4")
+	request.Params.User = schemas.Ptr("stream-user")
+	request.Params.Stop = []string{"END"}
+	responseFormat := interface{}(map[string]interface{}{"type": "json_object"})
+	request.Params.ResponseFormat = &responseFormat
+
+	provider := newTestProvider(t, server.URL)
+	stream, err := provider.ChatCompletionStream(newTestContext(), noOpPostHookRunner, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request)
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case chunk, ok := <-stream:
+			if !ok {
+				return
+			}
+			if chunk.BifrostError != nil {
+				t.Fatalf("unexpected stream error: %#v", chunk.BifrostError)
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for stream")
+		}
+	}
+}
+
+func TestChatCompletionStreamOpenAIResponsesUsesNestedFailedError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("response writer does not support flushing")
+		}
+
+		events := []string{
+			`{"type":"response.created","sequence_number":0,"response":{"id":"resp_failed","created_at":123,"model":"openai/gpt-5.4"}}`,
+			`{"type":"response.failed","sequence_number":1,"response":{"id":"resp_failed","created_at":123,"model":"openai/gpt-5.4","error":{"message":"nested failure reason","code":"nested_error"}}}`,
+		}
+
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL)
+	stream, err := provider.ChatCompletionStream(newTestContext(), noOpPostHookRunner, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, makeChatRequest("openai/gpt-5.4"))
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case chunk, ok := <-stream:
+			if !ok {
+				t.Fatal("stream closed before emitting error")
+			}
+			if chunk.BifrostError == nil {
+				continue
+			}
+			if chunk.BifrostError.Error == nil {
+				t.Fatalf("stream error missing error field: %#v", chunk.BifrostError)
+			}
+			if chunk.BifrostError.Error.Message != "nested failure reason" {
+				t.Fatalf("error message = %q, want %q", chunk.BifrostError.Error.Message, "nested failure reason")
+			}
+			if chunk.BifrostError.Error.Code == nil || *chunk.BifrostError.Error.Code != "nested_error" {
+				t.Fatalf("error code = %v, want %q", chunk.BifrostError.Error.Code, "nested_error")
+			}
+			return
+		case <-timeout:
+			t.Fatal("timed out waiting for stream error")
+		}
+	}
+}
+
+func TestResponsesLargePayloadOpenAIToChatCompletionsConvertsBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, `"input"`) {
+			t.Fatalf("request body still contains responses input: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"messages"`) {
+			t.Fatalf("request body missing chat messages: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"response_format"`) {
+			t.Fatalf("request body missing response_format: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"user": "responses-user"`) {
+			t.Fatalf("request body missing user: %s", bodyStr)
+		}
+
+		response := &schemas.BifrostChatResponse{
+			ID:      "chatcmpl_large_resp",
+			Object:  "chat.completion",
+			Created: 123,
+			Model:   "deepseek-ai/DeepSeek-R1",
+			Choices: []schemas.BifrostResponseChoice{
+				{
+					Index: 0,
+					ChatNonStreamResponseChoice: &schemas.ChatNonStreamResponseChoice{
+						Message: &schemas.ChatMessage{
+							Role: schemas.ChatMessageRoleAssistant,
+							Content: &schemas.ChatMessageContent{
+								ContentStr: schemas.Ptr("ok"),
+							},
+						},
+					},
+					FinishReason: schemas.Ptr(string(schemas.BifrostFinishReasonStop)),
+				},
+			},
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	ctx := newTestContext()
+	rawPayload := `{"model":"gmi/deepseek-ai/DeepSeek-R1","input":[{"role":"user","content":"hello"}],"text":{"format":{"type":"json_object"}},"user":"responses-user"}`
+	ctx.SetValue(schemas.BifrostContextKeyIntegrationType, "openai")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMode, true)
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadReader, strings.NewReader(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentLength, len(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentType, "application/json")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMetadata, &schemas.LargePayloadMetadata{
+		Model: "gmi/deepseek-ai/DeepSeek-R1",
+	})
+
+	request := &schemas.BifrostResponsesRequest{
+		Provider: schemas.GMI,
+		Model:    "deepseek-ai/DeepSeek-R1",
+	}
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.Responses(ctx, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("Responses() error = %v", err)
+	}
+}
+
+func TestResponsesLargePayloadAnthropicToResponsesConvertsBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, `"messages"`) {
+			t.Fatalf("request body still contains anthropic messages: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"input"`) {
+			t.Fatalf("request body missing responses input: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"max_output_tokens": 64`) {
+			t.Fatalf("request body missing converted max_output_tokens: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"model": "openai/gpt-5.4"`) {
+			t.Fatalf("request body missing normalized model: %s", bodyStr)
+		}
+
+		response := &schemas.BifrostResponsesResponse{
+			ID:        schemas.Ptr("resp_anthropic_large"),
+			Object:    "response",
+			CreatedAt: 123,
+			Model:     "openai/gpt-5.4",
+			Output: []schemas.ResponsesMessage{
+				{
+					ID:   schemas.Ptr("msg_1"),
+					Type: schemas.Ptr(schemas.ResponsesMessageTypeMessage),
+					Role: schemas.Ptr(schemas.ResponsesInputMessageRoleAssistant),
+					Content: &schemas.ResponsesMessageContent{
+						ContentBlocks: []schemas.ResponsesMessageContentBlock{
+							{
+								Type:                              schemas.ResponsesOutputMessageContentTypeText,
+								Text:                              schemas.Ptr("ok"),
+								ResponsesOutputMessageContentText: &schemas.ResponsesOutputMessageContentText{},
+							},
+						},
+					},
+				},
+			},
+			StopReason: schemas.Ptr("stop"),
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	ctx := newTestContext()
+	rawPayload := `{"model":"gmi/openai/gpt-5.4","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`
+	ctx.SetValue(schemas.BifrostContextKeyIntegrationType, "anthropic")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMode, true)
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadReader, strings.NewReader(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentLength, len(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentType, "application/json")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMetadata, &schemas.LargePayloadMetadata{
+		Model: "gmi/openai/gpt-5.4",
+	})
+
+	request := &schemas.BifrostResponsesRequest{
+		Provider: schemas.GMI,
+		Model:    "openai/gpt-5.4",
+	}
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.Responses(ctx, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("Responses() error = %v", err)
+	}
+}
+
+func TestResponsesLargePayloadGenAIToChatCompletionsConvertsBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, `"contents"`) {
+			t.Fatalf("request body still contains genai contents: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"messages"`) {
+			t.Fatalf("request body missing chat messages: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"model": "deepseek-ai/DeepSeek-R1"`) {
+			t.Fatalf("request body missing model: %s", bodyStr)
+		}
+
+		response := &schemas.BifrostChatResponse{
+			ID:      "chatcmpl_genai_large",
+			Object:  "chat.completion",
+			Created: 123,
+			Model:   "deepseek-ai/DeepSeek-R1",
+			Choices: []schemas.BifrostResponseChoice{
+				{
+					Index: 0,
+					ChatNonStreamResponseChoice: &schemas.ChatNonStreamResponseChoice{
+						Message: &schemas.ChatMessage{
+							Role: schemas.ChatMessageRoleAssistant,
+							Content: &schemas.ChatMessageContent{
+								ContentStr: schemas.Ptr("ok"),
+							},
+						},
+					},
+					FinishReason: schemas.Ptr(string(schemas.BifrostFinishReasonStop)),
+				},
+			},
+		}
+		_ = sonic.ConfigDefault.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	ctx := newTestContext()
+	rawPayload := `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`
+	ctx.SetValue(schemas.BifrostContextKeyIntegrationType, "genai")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMode, true)
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadReader, strings.NewReader(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentLength, len(rawPayload))
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentType, "application/json")
+	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMetadata, &schemas.LargePayloadMetadata{
+		Model: "deepseek-ai/DeepSeek-R1",
+	})
+
+	request := &schemas.BifrostResponsesRequest{
+		Provider: schemas.GMI,
+		Model:    "deepseek-ai/DeepSeek-R1",
+	}
+
+	provider := newTestProvider(t, server.URL)
+	if _, err := provider.Responses(ctx, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request); err != nil {
+		t.Fatalf("Responses() error = %v", err)
+	}
+}
+
+func TestChatCompletionStreamOpenAIResponsesLargePayloadConvertsBody(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -650,8 +1264,14 @@ func TestChatCompletionStreamOpenAIResponsesLargePayloadNormalizesModel(t *testi
 		if strings.Contains(bodyStr, `"model":"gmi/openai/gpt-5.4"`) {
 			t.Fatalf("request body still contains gmi-prefixed model: %s", bodyStr)
 		}
-		if !strings.Contains(bodyStr, `"model":"openai/gpt-5.4"`) {
+		if !strings.Contains(bodyStr, `"model": "openai/gpt-5.4"`) {
 			t.Fatalf("request body missing normalized model: %s", bodyStr)
+		}
+		if strings.Contains(bodyStr, `"messages"`) {
+			t.Fatalf("request body still contains chat messages: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, `"input"`) {
+			t.Fatalf("request body missing responses input: %s", bodyStr)
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -678,12 +1298,17 @@ func TestChatCompletionStreamOpenAIResponsesLargePayloadNormalizesModel(t *testi
 	ctx.SetValue(schemas.BifrostContextKeyLargePayloadReader, strings.NewReader(rawPayload))
 	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentLength, len(rawPayload))
 	ctx.SetValue(schemas.BifrostContextKeyLargePayloadContentType, "application/json")
+	ctx.SetValue(schemas.BifrostContextKeyIntegrationType, "openai")
 	ctx.SetValue(schemas.BifrostContextKeyLargePayloadMetadata, &schemas.LargePayloadMetadata{
 		Model: "gmi/openai/gpt-5.4",
 	})
 
 	provider := newTestProvider(t, server.URL)
-	stream, err := provider.ChatCompletionStream(ctx, noOpPostHookRunner, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, makeChatRequest("openai/gpt-5.4"))
+	request := &schemas.BifrostChatRequest{
+		Provider: schemas.GMI,
+		Model:    "openai/gpt-5.4",
+	}
+	stream, err := provider.ChatCompletionStream(ctx, noOpPostHookRunner, schemas.Key{Value: schemas.EnvVar{Val: "test-key"}}, request)
 	if err != nil {
 		t.Fatalf("ChatCompletionStream() error = %v", err)
 	}
