@@ -81,9 +81,11 @@ func (baseAccount *BaseAccount) GetConfigForProvider(providerKey schemas.ModelPr
 //
 // Required environment variables:
 //   - MAXIM_API_KEY: Your Maxim API key
-//   - MAXIM_LOGGER_ID: Your Maxim logger repository ID
+//   - MAXIM_LOG_REPO_ID: Your Maxim logger repository ID
 //   - OPENAI_API_KEY: Your OpenAI API key for the test request
 func TestMaximLoggerPlugin(t *testing.T) {
+	requireIntegrationEnv(t)
+
 	ctx := context.Background()
 	// Initialize the Maxim plugin
 	plugin, err := getPlugin()
