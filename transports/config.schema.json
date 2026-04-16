@@ -2803,6 +2803,34 @@
           ],
           "additionalProperties": false
         },
+        "websocket_config": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "WebSocket URL for MCP server"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "http_config": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "HTTP URL for MCP server"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
         "tools_to_execute": {
           "type": "array",
           "items": {
