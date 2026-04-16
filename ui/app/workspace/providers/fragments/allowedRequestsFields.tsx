@@ -47,6 +47,13 @@ const ProviderEndpoints: Partial<Record<BaseProvider, Partial<Record<RequestType
 		responses: "/v1/messages",
 		responses_stream: "/v1/messages",
 	},
+	gmi: {
+		list_models: "/v1/models",
+		chat_completion: "/v1/responses | /v1/messages | /v1/models/{model}:generateContent",
+		chat_completion_stream: "/v1/responses | /v1/messages | /v1/models/{model}:streamGenerateContent",
+		responses: "/v1/responses | /v1/messages | /v1/models/{model}:generateContent",
+		responses_stream: "/v1/responses | /v1/messages | /v1/models/{model}:streamGenerateContent",
+	},
 	cohere: {
 		chat_completion: "/v2/chat",
 		chat_completion_stream: "/v2/chat",

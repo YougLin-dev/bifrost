@@ -202,6 +202,10 @@ func CreateGenAIRouteConfigs(pathPrefix string) []RouteConfig {
 			return gemini.ToGeminiEmbeddingResponse(resp), nil
 		},
 		ResponsesResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostResponsesResponse) (interface{}, error) {
+			if isGenAICompatibleRawResponse(resp.ExtraFields.Provider, resp.ExtraFields.ModelRequested, resp.ExtraFields.ModelDeployment) &&
+				resp.ExtraFields.RawResponse != nil {
+				return resp.ExtraFields.RawResponse, nil
+			}
 			return gemini.ToGeminiResponsesResponse(resp), nil
 		},
 		SpeechResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostSpeechResponse) (interface{}, error) {
@@ -227,6 +231,10 @@ func CreateGenAIRouteConfigs(pathPrefix string) []RouteConfig {
 		},
 		StreamConfig: &StreamConfig{
 			ResponsesStreamResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostResponsesStreamResponse) (string, interface{}, error) {
+				if isGenAICompatibleRawResponse(resp.ExtraFields.Provider, resp.ExtraFields.ModelRequested, resp.ExtraFields.ModelDeployment) &&
+					resp.ExtraFields.RawResponse != nil {
+					return "", resp.ExtraFields.RawResponse, nil
+				}
 				// Store state in context so it persists across chunks of the same stream
 				const stateKey = "gemini_stream_state"
 				var state *gemini.BifrostToGeminiStreamState

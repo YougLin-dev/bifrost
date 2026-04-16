@@ -49,6 +49,7 @@ const (
 	Perplexity  ModelProvider = "perplexity"
 	Cerebras    ModelProvider = "cerebras"
 	Gemini      ModelProvider = "gemini"
+	GMI         ModelProvider = "gmi"
 	OpenRouter  ModelProvider = "openrouter"
 	Elevenlabs  ModelProvider = "elevenlabs"
 	HuggingFace ModelProvider = "huggingface"
@@ -66,6 +67,7 @@ var SupportedBaseProviders = []ModelProvider{
 	Bedrock,
 	Cohere,
 	Gemini,
+	GMI,
 	OpenAI,
 	HuggingFace,
 	Replicate,
@@ -79,6 +81,7 @@ var StandardProviders = []ModelProvider{
 	Cerebras,
 	Cohere,
 	Gemini,
+	GMI,
 	Groq,
 	Mistral,
 	Ollama,

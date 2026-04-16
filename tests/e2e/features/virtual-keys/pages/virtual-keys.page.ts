@@ -17,6 +17,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   ollama: 'Ollama',
   groq: 'Groq',
   gemini: 'Gemini',
+  gmi: 'GMI',
   openrouter: 'OpenRouter',
   huggingface: 'HuggingFace',
   cerebras: 'Cerebras',

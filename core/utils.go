@@ -63,6 +63,7 @@ var dynamicallyConfigurableProviders = []schemas.ModelProvider{
 	schemas.Cohere,
 	schemas.Elevenlabs,
 	schemas.Gemini,
+	schemas.GMI,
 	schemas.Groq,
 	schemas.HuggingFace,
 	schemas.Mistral,

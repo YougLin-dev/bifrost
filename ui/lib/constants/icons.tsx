@@ -573,6 +573,11 @@ export const ProviderIcons = {
 		);
 	},
 
+	gmi: ({ size = "md", className = "" }: IconProps) => {
+		const resolvedSize = resolveSize(size);
+		return <Network size={resolvedSize} className={className} />;
+	},
+
 	openrouter: ({ size = "md", className = "" }: IconProps) => {
 		const resolvedSize = resolveSize(size);
 

@@ -270,6 +270,9 @@
         "gemini": {
           "$ref": "#/$defs/provider"
         },
+        "gmi": {
+          "$ref": "#/$defs/provider"
+        },
         "openrouter": {
           "$ref": "#/$defs/provider"
         },

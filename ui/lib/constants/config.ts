@@ -32,6 +32,7 @@ export const ModelPlaceholders = {
 	cerebras: "e.g. cerebras-2, cerebras-2-vision",
 	cohere: "e.g. command-r, command-r-plus",
 	gemini: "e.g. gemini-1.5-pro, gemini-1.5-flash",
+	gmi: "e.g. openai/gpt-5.4, anthropic/claude-sonnet-4.6, google/gemini-3.1-flash-lite-preview",
 	groq: "e.g. llama3-70b-8192, mixtral-8x7b-32768",
 	huggingface: "e.g. sambanova/meta-llama/Llama-3.1-8B-Instruct, nebius/Qwen/Qwen3-Embedding-8B",
 	mistral: "e.g. mistral-7b-instruct, mixtral-8x7b",
@@ -58,6 +59,7 @@ export const isKeyRequiredByProvider: Record<ProviderName, boolean> = {
 	cerebras: true,
 	cohere: true,
 	gemini: true,
+	gmi: true,
 	groq: true,
 	huggingface: true,
 	mistral: true,
@@ -130,6 +132,7 @@ export const PROVIDER_SUPPORTED_REQUESTS: Record<BaseProvider, string[]> = {
 		"video_remix",
 	],
 	anthropic: ["list_models", "chat_completion", "chat_completion_stream", "responses", "responses_stream", "count_tokens"],
+	gmi: ["list_models", "chat_completion", "chat_completion_stream", "responses", "responses_stream"],
 	gemini: [
 		"list_models",
 		"chat_completion",

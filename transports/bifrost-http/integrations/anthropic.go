@@ -401,8 +401,13 @@ func shouldUsePassthrough(ctx *schemas.BifrostContext, provider schemas.ModelPro
 }
 
 func isClaudeModel(model, deployment, provider string) bool {
+	customAnthropicCompatible := provider != "" &&
+		!bifrost.IsStandardProvider(schemas.ModelProvider(provider)) &&
+		(strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(deployment, "anthropic/"))
 	return (provider == string(schemas.Anthropic) ||
 		(provider == "" && schemas.IsAnthropicModel(model))) ||
+		(provider == string(schemas.GMI) && (strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(deployment, "anthropic/"))) ||
+		customAnthropicCompatible ||
 		(provider == string(schemas.Vertex) && (schemas.IsAnthropicModel(model) || schemas.IsAnthropicModel(deployment))) ||
 		(provider == string(schemas.Azure) && (schemas.IsAnthropicModel(model) || schemas.IsAnthropicModel(deployment)))
 }

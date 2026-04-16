@@ -365,6 +365,7 @@ export class ProvidersPage extends BasePage {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
+      gmi: 'GMI',
       cohere: 'Cohere',
       bedrock: 'AWS Bedrock',
     }

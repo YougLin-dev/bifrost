@@ -41680,6 +41680,7 @@
           "replicate",
           "cerebras",
           "gemini",
+          "gmi",
           "openrouter",
           "elevenlabs",
           "huggingface",

@@ -487,6 +487,43 @@ func getProviderFromHeader(ctx *fasthttp.RequestCtx, defaultProvider schemas.Mod
 	return schemas.ModelProvider(providerHeader)
 }
 
+func hasModelFamilyPrefix(modelRequested string, modelDeployment string, family string) bool {
+	return strings.HasPrefix(modelRequested, family+"/") || strings.HasPrefix(modelDeployment, family+"/")
+}
+
+func isAnthropicCompatibleRawResponse(provider schemas.ModelProvider, modelRequested string, modelDeployment string) bool {
+	if provider == schemas.Anthropic {
+		return true
+	}
+	if provider == schemas.GMI {
+		return hasModelFamilyPrefix(modelRequested, modelDeployment, "anthropic")
+	}
+	return !bifrost.IsStandardProvider(provider) && hasModelFamilyPrefix(modelRequested, modelDeployment, "anthropic")
+}
+
+func isGenAICompatibleRawResponse(provider schemas.ModelProvider, modelRequested string, modelDeployment string) bool {
+	if provider == schemas.Gemini {
+		return true
+	}
+	if provider == schemas.GMI {
+		return hasModelFamilyPrefix(modelRequested, modelDeployment, "google")
+	}
+	return !bifrost.IsStandardProvider(provider) && hasModelFamilyPrefix(modelRequested, modelDeployment, "google")
+}
+
+func isOpenAICompatibleRawResponse(provider schemas.ModelProvider, modelRequested string, modelDeployment string) bool {
+	if provider == schemas.OpenAI {
+		return true
+	}
+	if hasModelFamilyPrefix(modelRequested, modelDeployment, "anthropic") || hasModelFamilyPrefix(modelRequested, modelDeployment, "google") {
+		return false
+	}
+	if provider == schemas.GMI {
+		return strings.Contains(modelRequested, "/") || strings.Contains(modelDeployment, "/")
+	}
+	return !bifrost.IsStandardProvider(provider) && (strings.Contains(modelRequested, "/") || strings.Contains(modelDeployment, "/"))
+}
+
 func RegisterKVDecoders(store *kvstore.Store) {
 	store.RegisterDecoder("genai_upload_session:", func(data []byte) (any, error) {
 		var v gemini.GeminiResumableUploadSession
