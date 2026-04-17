@@ -208,7 +208,7 @@ const (
 	BifrostContextKeyTraceCompleter                      BifrostContextKey = "bifrost-trace-completer"                          // func() (callback to complete trace after streaming - set by tracing middleware)
 	BifrostContextKeyPostHookSpanFinalizer               BifrostContextKey = "bifrost-posthook-span-finalizer"                  // func(context.Context) (callback to finalize post-hook spans after streaming - set by bifrost)
 	BifrostContextKeyAccumulatorID                       BifrostContextKey = "bifrost-accumulator-id"                           // string (ID for streaming accumulator lookup - set by tracer for accumulator operations)
-	BifrostContextKeyHasEmittedMessageDelta              BifrostContextKey = "bifrost-has-emitted-message-delta"                 // bool (tracks whether message_delta was already emitted during streaming - avoids duplicates)
+	BifrostContextKeyHasEmittedMessageDelta              BifrostContextKey = "bifrost-has-emitted-message-delta"                // bool (tracks whether message_delta was already emitted during streaming - avoids duplicates)
 	BifrostContextKeySkipDBUpdate                        BifrostContextKey = "bifrost-skip-db-update"                           // bool (set by bifrost - DO NOT SET THIS MANUALLY))
 	BifrostContextKeyGovernancePluginName                BifrostContextKey = "governance-plugin-name"                           // string (name of the governance plugin that processed the request - set by bifrost)
 	BifrostContextKeyIsEnterprise                        BifrostContextKey = "is-enterprise"                                    // bool (set by bifrost - DO NOT SET THIS MANUALLY))
@@ -237,6 +237,7 @@ const (
 	BifrostContextKeyLargePayloadContentType             BifrostContextKey = "bifrost-large-payload-content-type"         // string (set by enterprise - DO NOT SET THIS MANUALLY)) original content type for large payload passthrough
 	BifrostContextKeyLargePayloadMetadata                BifrostContextKey = "bifrost-large-payload-metadata"             // *LargePayloadMetadata (set by bifrost - DO NOT SET THIS MANUALLY)) routing metadata for large payloads
 	BifrostContextKeyLargePayloadRequestThreshold        BifrostContextKey = "bifrost-large-payload-request-threshold"    // int64 (set by enterprise - DO NOT SET THIS MANUALLY)) request threshold used by transport heuristics
+	BifrostContextKeyRequestOverrideEngine               BifrostContextKey = "bifrost-request-override-engine"            // *RequestOverrideEngine (set by bifrost - DO NOT SET THIS MANUALLY)
 	BifrostContextKeyLargeResponseMode                   BifrostContextKey = "bifrost-large-response-mode"                // bool (set by bifrost - DO NOT SET THIS MANUALLY)) indicates large response streaming mode is active
 	BifrostContextKeyLargePayloadRequestPreview          BifrostContextKey = "bifrost-large-payload-request-preview"      // string (set by bifrost - DO NOT SET THIS MANUALLY)) truncated request body preview for logging
 	BifrostContextKeyLargePayloadResponsePreview         BifrostContextKey = "bifrost-large-payload-response-preview"     // string (set by bifrost - DO NOT SET THIS MANUALLY)) truncated response body preview for logging

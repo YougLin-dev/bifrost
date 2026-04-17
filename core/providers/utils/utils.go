@@ -1074,6 +1074,17 @@ func CheckContextAndGetRequestBody(ctx context.Context, request RequestBodyGette
 				}
 			}
 		}
+		// Apply request parameter overrides from provider config (CEL-based rules)
+		if engine, _ := ctx.Value(schemas.BifrostContextKeyRequestOverrideEngine).(*RequestOverrideEngine); engine != nil {
+			// Get request type from context (set by bifrost-http transport)
+			// For SDK callers, this will be empty - they should use model-based matching instead
+			requestType, _ := ctx.Value(schemas.BifrostContextKeyHTTPRequestType).(schemas.RequestType)
+			model := ExtractModelFromJSON(jsonBody)
+			jsonBody, err = engine.ApplyOverrides(jsonBody, model, string(requestType))
+			if err != nil {
+				return nil, NewBifrostOperationError("request override application failed", err, providerType)
+			}
+		}
 		return jsonBody, nil
 	} else {
 		return rawBody, nil

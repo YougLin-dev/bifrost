@@ -4,7 +4,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ModelProvider } from "@/lib/types/config";
 import { RbacOperation, RbacResource, useRbac } from "@enterprise/lib";
 import { useEffect, useMemo, useState } from "react";
-import { ApiStructureFormFragment, BetaHeadersFormFragment, GovernanceFormFragment, OpenAIConfigFormFragment, ProxyFormFragment } from "../fragments";
+import {
+	ApiStructureFormFragment,
+	BetaHeadersFormFragment,
+	GovernanceFormFragment,
+	OpenAIConfigFormFragment,
+	ProxyFormFragment,
+	RequestOverridesFormFragment,
+} from "../fragments";
 import { DebuggingFormFragment } from "../fragments/debuggingFormFragment";
 import { NetworkFormFragment } from "../fragments/networkFormFragment";
 import { PerformanceFormFragment } from "../fragments/performanceFormFragment";
@@ -49,6 +56,10 @@ const availableTabs = (hasCustomProviderConfig: boolean, hasGovernanceAccess: bo
 			label: "Beta Headers",
 		});
 	}
+	tabs.push({
+		id: "request-overrides",
+		label: "Request Overrides",
+	});
 	tabs.push({
 		id: "debugging",
 		label: "Debugging",
@@ -137,6 +148,9 @@ export default function ProviderConfigSheet({ show, onCancel, provider }: Props)
 						</TabsContent>
 						<TabsContent value="beta-headers">
 							<BetaHeadersFormFragment provider={provider} />
+						</TabsContent>
+						<TabsContent value="request-overrides">
+							<RequestOverridesFormFragment provider={provider} />
 						</TabsContent>
 						<TabsContent value="debugging">
 							<DebuggingFormFragment provider={provider} />

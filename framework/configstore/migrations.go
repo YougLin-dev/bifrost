@@ -340,6 +340,9 @@ func triggerMigrations(ctx context.Context, db *gorm.DB) error {
 	if err := migrationNormalizeOtelTraceType(ctx, db); err != nil {
 		return err
 	}
+	if err := migrationAddRequestOverridesColumn(ctx, db); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -385,6 +388,7 @@ func migrationAddStoreRawRequestResponseColumn(ctx context.Context, db *gorm.DB)
 					StoreRawRequestResponse:  provider.StoreRawRequestResponse,
 					CustomProviderConfig:     provider.CustomProviderConfig,
 					PricingOverrides:         provider.PricingOverrides,
+					RequestOverrides:         provider.RequestOverrides,
 				}
 				// Here the default value of store_raw_request_response should be based on the default value of SendBackRawRequest and SendBackRawResponse
 				if provider.SendBackRawRequest || provider.SendBackRawResponse {
@@ -5121,6 +5125,37 @@ func migrationNormalizeOtelTraceType(ctx context.Context, db *gorm.DB) error {
 	}})
 	if err := m.Migrate(); err != nil {
 		return fmt.Errorf("error running normalize_otel_trace_type migration: %s", err.Error())
+	}
+	return nil
+}
+
+// migrationAddRequestOverridesColumn adds the request_overrides_json column to the config_provider table
+func migrationAddRequestOverridesColumn(ctx context.Context, db *gorm.DB) error {
+	m := migrator.New(db, migrator.DefaultOptions, []*migrator.Migration{{
+		ID: "add_provider_request_overrides_column",
+		Migrate: func(tx *gorm.DB) error {
+			tx = tx.WithContext(ctx)
+			migrator := tx.Migrator()
+			if !migrator.HasColumn(&tables.TableProvider{}, "request_overrides_json") {
+				if err := migrator.AddColumn(&tables.TableProvider{}, "RequestOverridesJSON"); err != nil {
+					return fmt.Errorf("failed to add request_overrides_json column: %w", err)
+				}
+			}
+			return nil
+		},
+		Rollback: func(tx *gorm.DB) error {
+			tx = tx.WithContext(ctx)
+			migrator := tx.Migrator()
+			if migrator.HasColumn(&tables.TableProvider{}, "request_overrides_json") {
+				if err := migrator.DropColumn(&tables.TableProvider{}, "request_overrides_json"); err != nil {
+					return fmt.Errorf("failed to drop request_overrides_json column: %w", err)
+				}
+			}
+			return nil
+		},
+	}})
+	if err := m.Migrate(); err != nil {
+		return fmt.Errorf("error running provider request overrides column migration: %s", err.Error())
 	}
 	return nil
 }

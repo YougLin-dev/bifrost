@@ -17,6 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/fasthttp/router"
 	bifrost "github.com/maximhq/bifrost/core"
+	providerUtils "github.com/maximhq/bifrost/core/providers/utils"
 	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/maximhq/bifrost/framework/configstore"
 	"github.com/maximhq/bifrost/framework/configstore/tables"
@@ -72,6 +73,7 @@ type ProviderResponse struct {
 	CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"` // Custom provider configuration
 	OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`          // OpenAI-specific configuration
 	PricingOverrides         []schemas.ProviderPricingOverride `json:"pricing_overrides,omitempty"`      // Provider-level pricing overrides
+	RequestOverrides         []schemas.RequestOverride         `json:"request_overrides,omitempty"`      // Provider-level request parameter overrides
 	ProviderStatus           ProviderStatus                    `json:"provider_status"`                  // Health/initialization status of the provider
 	Status                   string                            `json:"status,omitempty"`                 // Operational status (e.g., list_models_failed)
 	Description              string                            `json:"description,omitempty"`            // Error/status description
@@ -213,6 +215,7 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 		CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"`      // Custom provider configuration
 		OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`               // OpenAI-specific configuration
 		PricingOverrides         []schemas.ProviderPricingOverride `json:"pricing_overrides,omitempty"`           // Provider-level pricing overrides
+		RequestOverrides         []schemas.RequestOverride         `json:"request_overrides,omitempty"`           // Provider-level request parameter overrides
 	}{}
 	if err := json.Unmarshal(ctx.PostBody(), &payload); err != nil {
 		SendError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("Invalid JSON: %v", err))
@@ -257,6 +260,10 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 		SendError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid pricing overrides: %v", err))
 		return
 	}
+	if err := validateRequestOverrides(payload.RequestOverrides); err != nil {
+		SendError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid request overrides: %v", err))
+		return
+	}
 	// Validate retry backoff values if NetworkConfig is provided
 	if payload.NetworkConfig != nil {
 		if err := validateRetryBackoff(payload.NetworkConfig); err != nil {
@@ -287,6 +294,7 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 		CustomProviderConfig:     payload.CustomProviderConfig,
 		OpenAIConfig:             payload.OpenAIConfig,
 		PricingOverrides:         payload.PricingOverrides,
+		RequestOverrides:         payload.RequestOverrides,
 	}
 	// Validate custom provider configuration before persisting
 	if err := lib.ValidateCustomProvider(config, payload.Provider); err != nil {
@@ -331,6 +339,7 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 			StoreRawRequestResponse:  config.StoreRawRequestResponse,
 			CustomProviderConfig:     config.CustomProviderConfig,
 			PricingOverrides:         config.PricingOverrides,
+			RequestOverrides:         config.RequestOverrides,
 			Status:                   config.Status,
 			Description:              config.Description,
 		}, ProviderStatusActive)
@@ -367,6 +376,7 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 		CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"`     // Custom provider configuration
 		OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`              // OpenAI-specific configuration
 		PricingOverrides         []schemas.ProviderPricingOverride `json:"pricing_overrides,omitempty"`          // Provider-level pricing overrides
+		RequestOverrides         []schemas.RequestOverride         `json:"request_overrides,omitempty"`          // Provider-level request parameter overrides
 	}{}
 
 	if err := sonic.Unmarshal(ctx.PostBody(), &payload); err != nil {
@@ -375,6 +385,10 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 	}
 	if err := validatePricingOverrides(payload.PricingOverrides); err != nil {
 		SendError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid pricing overrides: %v", err))
+		return
+	}
+	if err := validateRequestOverrides(payload.RequestOverrides); err != nil {
+		SendError(ctx, fasthttp.StatusBadRequest, fmt.Sprintf("invalid request overrides: %v", err))
 		return
 	}
 
@@ -502,6 +516,7 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 	config.CustomProviderConfig = payload.CustomProviderConfig
 	config.OpenAIConfig = payload.OpenAIConfig
 	config.PricingOverrides = payload.PricingOverrides
+	config.RequestOverrides = payload.RequestOverrides
 	if payload.SendBackRawRequest != nil {
 		config.SendBackRawRequest = *payload.SendBackRawRequest
 	}
@@ -565,6 +580,7 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 			StoreRawRequestResponse:  config.StoreRawRequestResponse,
 			CustomProviderConfig:     config.CustomProviderConfig,
 			PricingOverrides:         config.PricingOverrides,
+			RequestOverrides:         config.RequestOverrides,
 			Status:                   config.Status,
 			Description:              config.Description,
 		}, ProviderStatusActive)
@@ -1310,6 +1326,7 @@ func (h *ProviderHandler) getProviderResponseFromConfig(provider schemas.ModelPr
 		CustomProviderConfig:     config.CustomProviderConfig,
 		OpenAIConfig:             config.OpenAIConfig,
 		PricingOverrides:         config.PricingOverrides,
+		RequestOverrides:         config.RequestOverrides,
 		ProviderStatus:           status,
 		Status:                   config.Status,
 		Description:              config.Description,
@@ -1455,4 +1472,12 @@ func validateRetryBackoff(networkConfig *schemas.NetworkConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateRequestOverrides(overrides []schemas.RequestOverride) error {
+	if len(overrides) == 0 {
+		return nil
+	}
+	_, err := providerUtils.NewRequestOverrideEngine(overrides)
+	return err
 }

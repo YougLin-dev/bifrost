@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/bytedance/sonic"
 	bifrost "github.com/maximhq/bifrost/core"
 	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/maximhq/bifrost/framework/configstore/tables"
@@ -149,19 +148,19 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 	}
 
 	// Hash integer fields
-	data, err := sonic.Marshal(c.InitialPoolSize)
+	data, err := json.Marshal(c.InitialPoolSize)
 	if err != nil {
 		return "", err
 	}
 	hash.Write(data)
 
-	data, err = sonic.Marshal(c.LogRetentionDays)
+	data, err = json.Marshal(c.LogRetentionDays)
 	if err != nil {
 		return "", err
 	}
 	hash.Write(data)
 
-	data, err = sonic.Marshal(c.MaxRequestBodySizeMB)
+	data, err = json.Marshal(c.MaxRequestBodySizeMB)
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +171,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 		sortedLabels := make([]string, len(c.PrometheusLabels))
 		copy(sortedLabels, c.PrometheusLabels)
 		sort.Strings(sortedLabels)
-		data, err := sonic.Marshal(sortedLabels)
+		data, err := json.Marshal(sortedLabels)
 		if err != nil {
 			return "", err
 		}
@@ -184,7 +183,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 		sortedOrigins := make([]string, len(c.AllowedOrigins))
 		copy(sortedOrigins, c.AllowedOrigins)
 		sort.Strings(sortedOrigins)
-		data, err := sonic.Marshal(sortedOrigins)
+		data, err := json.Marshal(sortedOrigins)
 		if err != nil {
 			return "", err
 		}
@@ -196,7 +195,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 		sortedHeaders := make([]string, len(c.AllowedHeaders))
 		copy(sortedHeaders, c.AllowedHeaders)
 		sort.Strings(sortedHeaders)
-		data, err := sonic.Marshal(sortedHeaders)
+		data, err := json.Marshal(sortedHeaders)
 		if err != nil {
 			return "", err
 		}
@@ -208,7 +207,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 		sortedRequired := make([]string, len(c.RequiredHeaders))
 		copy(sortedRequired, c.RequiredHeaders)
 		sort.Strings(sortedRequired)
-		data, err := sonic.Marshal(sortedRequired)
+		data, err := json.Marshal(sortedRequired)
 		if err != nil {
 			return "", err
 		}
@@ -221,7 +220,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 		sortedRoutes := make([]string, len(c.WhitelistedRoutes))
 		copy(sortedRoutes, c.WhitelistedRoutes)
 		sort.Strings(sortedRoutes)
-		data, err := sonic.Marshal(sortedRoutes)
+		data, err := json.Marshal(sortedRoutes)
 		if err != nil {
 			return "", err
 		}
@@ -236,7 +235,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 			sortedAllowlist := make([]string, len(c.HeaderFilterConfig.Allowlist))
 			copy(sortedAllowlist, c.HeaderFilterConfig.Allowlist)
 			sort.Strings(sortedAllowlist)
-			data, err := sonic.Marshal(sortedAllowlist)
+			data, err := json.Marshal(sortedAllowlist)
 			if err != nil {
 				return "", err
 			}
@@ -248,7 +247,7 @@ func (c *ClientConfig) GenerateClientConfigHash() (string, error) {
 			sortedDenylist := make([]string, len(c.HeaderFilterConfig.Denylist))
 			copy(sortedDenylist, c.HeaderFilterConfig.Denylist)
 			sort.Strings(sortedDenylist)
-			data, err := sonic.Marshal(sortedDenylist)
+			data, err := json.Marshal(sortedDenylist)
 			if err != nil {
 				return "", err
 			}
@@ -273,6 +272,7 @@ type ProviderConfig struct {
 	CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"`      // Custom provider configuration
 	OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`               // OpenAI-specific configuration
 	PricingOverrides         []schemas.ProviderPricingOverride `json:"pricing_overrides,omitempty"`           // Provider-level pricing overrides
+	RequestOverrides         []schemas.RequestOverride         `json:"request_overrides,omitempty"`           // Rule-based request parameter overrides
 	ConfigHash               string                            `json:"config_hash,omitempty"`                 // Hash of config.json version, used for change detection
 	Status                   string                            `json:"status,omitempty"`                      // Model discovery status for keyless providers
 	Description              string                            `json:"description,omitempty"`                 // Model discovery error message for keyless providers
@@ -294,6 +294,7 @@ func (p *ProviderConfig) Redacted() *ProviderConfig {
 		CustomProviderConfig:     p.CustomProviderConfig,
 		OpenAIConfig:             p.OpenAIConfig,
 		PricingOverrides:         p.PricingOverrides,
+		RequestOverrides:         p.RequestOverrides,
 		ConfigHash:               p.ConfigHash,
 		Status:                   p.Status,
 		Description:              p.Description,
@@ -433,7 +434,7 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash NetworkConfig
 	if p.NetworkConfig != nil {
-		data, err := sonic.Marshal(p.NetworkConfig)
+		data, err := json.Marshal(p.NetworkConfig)
 		if err != nil {
 			return "", err
 		}
@@ -442,7 +443,7 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash ConcurrencyAndBufferSize
 	if p.ConcurrencyAndBufferSize != nil {
-		data, err := sonic.Marshal(p.ConcurrencyAndBufferSize)
+		data, err := json.Marshal(p.ConcurrencyAndBufferSize)
 		if err != nil {
 			return "", err
 		}
@@ -451,7 +452,7 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash ProxyConfig
 	if p.ProxyConfig != nil {
-		data, err := sonic.Marshal(p.ProxyConfig)
+		data, err := json.Marshal(p.ProxyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -460,7 +461,7 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash CustomProviderConfig
 	if p.CustomProviderConfig != nil {
-		data, err := sonic.Marshal(p.CustomProviderConfig)
+		data, err := json.Marshal(p.CustomProviderConfig)
 		if err != nil {
 			return "", err
 		}
@@ -469,7 +470,7 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash OpenAIConfig
 	if p.OpenAIConfig != nil {
-		data, err := sonic.Marshal(p.OpenAIConfig)
+		data, err := json.Marshal(p.OpenAIConfig)
 		if err != nil {
 			return "", err
 		}
@@ -478,7 +479,16 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 
 	// Hash PricingOverrides
 	if p.PricingOverrides != nil {
-		data, err := sonic.Marshal(p.PricingOverrides)
+		data, err := json.Marshal(p.PricingOverrides)
+		if err != nil {
+			return "", err
+		}
+		hash.Write(data)
+	}
+
+	// Hash RequestOverrides
+	if p.RequestOverrides != nil {
+		data, err := json.Marshal(p.RequestOverrides)
 		if err != nil {
 			return "", err
 		}
@@ -521,7 +531,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 		sortedModels := make([]string, len(key.Models))
 		copy(sortedModels, key.Models)
 		sort.Strings(sortedModels)
-		data, err := sonic.Marshal(sortedModels)
+		data, err := json.Marshal(sortedModels)
 		if err != nil {
 			return "", err
 		}
@@ -532,7 +542,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 		sortedBlacklistedModels := make([]string, len(key.BlacklistedModels))
 		copy(sortedBlacklistedModels, key.BlacklistedModels)
 		sort.Strings(sortedBlacklistedModels)
-		data, err := sonic.Marshal(sortedBlacklistedModels)
+		data, err := json.Marshal(sortedBlacklistedModels)
 		if err != nil {
 			return "", err
 		}
@@ -540,14 +550,14 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 		hash.Write(data)
 	}
 	// Hash Weight
-	data, err := sonic.Marshal(key.Weight)
+	data, err := json.Marshal(key.Weight)
 	if err != nil {
 		return "", err
 	}
 	hash.Write(data)
 	// Hash AzureKeyConfig
 	if key.AzureKeyConfig != nil {
-		data, err := sonic.Marshal(key.AzureKeyConfig)
+		data, err := json.Marshal(key.AzureKeyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -555,7 +565,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 	}
 	// Hash VertexKeyConfig
 	if key.VertexKeyConfig != nil {
-		data, err := sonic.Marshal(key.VertexKeyConfig)
+		data, err := json.Marshal(key.VertexKeyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -563,7 +573,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 	}
 	// Hash BedrockKeyConfig
 	if key.BedrockKeyConfig != nil {
-		data, err := sonic.Marshal(key.BedrockKeyConfig)
+		data, err := json.Marshal(key.BedrockKeyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -571,7 +581,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 	}
 	// Hash ReplicateKeyConfig
 	if key.ReplicateKeyConfig != nil {
-		data, err := sonic.Marshal(key.ReplicateKeyConfig)
+		data, err := json.Marshal(key.ReplicateKeyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -579,7 +589,7 @@ func GenerateKeyHash(key schemas.Key) (string, error) {
 	}
 	// Hash VLLMKeyConfig
 	if key.VLLMKeyConfig != nil {
-		data, err := sonic.Marshal(key.VLLMKeyConfig)
+		data, err := json.Marshal(key.VLLMKeyConfig)
 		if err != nil {
 			return "", err
 		}
@@ -719,7 +729,7 @@ func GenerateVirtualKeyHash(vk tables.TableVirtualKey) (string, error) {
 				KeyIDs:        keyIDs,
 			}
 		}
-		data, err := sonic.Marshal(providerConfigsForHash)
+		data, err := json.Marshal(providerConfigsForHash)
 		if err != nil {
 			return "", err
 		}
@@ -746,7 +756,7 @@ func GenerateVirtualKeyHash(vk tables.TableVirtualKey) (string, error) {
 				ToolsToExecute: sortedTools,
 			}
 		}
-		data, err := sonic.Marshal(mcpConfigsForHash)
+		data, err := json.Marshal(mcpConfigsForHash)
 		if err != nil {
 			return "", err
 		}
@@ -765,7 +775,7 @@ func GenerateBudgetHash(b tables.TableBudget) (string, error) {
 	hash.Write([]byte(b.ID))
 
 	// Hash MaxLimit
-	data, err := sonic.Marshal(b.MaxLimit)
+	data, err := json.Marshal(b.MaxLimit)
 	if err != nil {
 		return "", err
 	}
@@ -788,7 +798,7 @@ func GenerateRateLimitHash(rl tables.TableRateLimit) (string, error) {
 
 	// Hash TokenMaxLimit
 	if rl.TokenMaxLimit != nil {
-		data, err := sonic.Marshal(*rl.TokenMaxLimit)
+		data, err := json.Marshal(*rl.TokenMaxLimit)
 		if err != nil {
 			return "", err
 		}
@@ -802,7 +812,7 @@ func GenerateRateLimitHash(rl tables.TableRateLimit) (string, error) {
 
 	// Hash RequestMaxLimit
 	if rl.RequestMaxLimit != nil {
-		data, err := sonic.Marshal(*rl.RequestMaxLimit)
+		data, err := json.Marshal(*rl.RequestMaxLimit)
 		if err != nil {
 			return "", err
 		}
@@ -948,11 +958,11 @@ func GenerateRoutingRuleHash(r tables.TableRoutingRule) (string, error) {
 	sort.Slice(targets, func(i, j int) bool {
 		pi := routingTargetHashPayload{Provider: derefStr(targets[i].Provider), Model: derefStr(targets[i].Model), KeyID: derefStr(targets[i].KeyID), Weight: targets[i].Weight}
 		pj := routingTargetHashPayload{Provider: derefStr(targets[j].Provider), Model: derefStr(targets[j].Model), KeyID: derefStr(targets[j].KeyID), Weight: targets[j].Weight}
-		di, err := sonic.Marshal(pi)
+		di, err := json.Marshal(pi)
 		if err != nil {
 			return false
 		}
-		dj, err := sonic.Marshal(pj)
+		dj, err := json.Marshal(pj)
 		if err != nil {
 			return false
 		}
@@ -960,7 +970,7 @@ func GenerateRoutingRuleHash(r tables.TableRoutingRule) (string, error) {
 	})
 	for _, t := range targets {
 		payload := routingTargetHashPayload{Provider: derefStr(t.Provider), Model: derefStr(t.Model), KeyID: derefStr(t.KeyID), Weight: t.Weight}
-		data, err := sonic.Marshal(payload)
+		data, err := json.Marshal(payload)
 		if err != nil {
 			return "", err
 		}
@@ -971,7 +981,7 @@ func GenerateRoutingRuleHash(r tables.TableRoutingRule) (string, error) {
 	if r.Fallbacks != nil {
 		hash.Write([]byte(*r.Fallbacks))
 	} else if len(r.ParsedFallbacks) > 0 {
-		data, err := sonic.Marshal(r.ParsedFallbacks)
+		data, err := json.Marshal(r.ParsedFallbacks)
 		if err != nil {
 			return "", err
 		}
@@ -1034,7 +1044,7 @@ func GenerateMCPClientHash(m tables.TableMCPClient) (string, error) {
 
 	// Hash StdioConfig
 	if m.StdioConfig != nil {
-		data, err := sonic.Marshal(m.StdioConfig)
+		data, err := json.Marshal(m.StdioConfig)
 		if err != nil {
 			return "", err
 		}
@@ -1046,7 +1056,7 @@ func GenerateMCPClientHash(m tables.TableMCPClient) (string, error) {
 		sortedTools := make([]string, len(m.ToolsToExecute))
 		copy(sortedTools, m.ToolsToExecute)
 		sort.Strings(sortedTools)
-		data, err := sonic.Marshal(sortedTools)
+		data, err := json.Marshal(sortedTools)
 		if err != nil {
 			return "", err
 		}
@@ -1111,7 +1121,7 @@ func GeneratePluginHash(p tables.TablePlugin) (string, error) {
 	}
 
 	// Hash Version
-	data, err := sonic.Marshal(p.Version)
+	data, err := json.Marshal(p.Version)
 	if err != nil {
 		return "", err
 	}

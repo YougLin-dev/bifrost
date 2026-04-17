@@ -16,6 +16,7 @@ require (
 	github.com/aws/smithy-go v1.24.2
 	github.com/bytedance/sonic v1.15.0
 	github.com/fasthttp/websocket v1.5.12
+	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/klauspost/compress v1.18.2
@@ -32,9 +33,11 @@ require (
 )
 
 require (
+	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.19 // indirect
@@ -65,6 +68,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20250408102913-196191ec6287 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
+	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -73,7 +77,10 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/arch v0.23.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

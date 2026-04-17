@@ -72,6 +72,16 @@ func getRequestBodyForAnthropicResponses(ctx *schemas.BifrostContext, request *s
 		}
 	}
 
+	// Apply request parameter overrides from provider config (CEL-based rules)
+	inferredType := schemas.ResponsesRequest
+	if isStreaming {
+		inferredType = schemas.ResponsesStreamRequest
+	}
+	jsonBody, err = providerUtils.ApplyRequestOverridesFromContext(ctx, jsonBody, inferredType)
+	if err != nil {
+		return nil, providerUtils.NewBifrostOperationError("request override application failed", err, providerName)
+	}
+
 	return jsonBody, nil
 }
 

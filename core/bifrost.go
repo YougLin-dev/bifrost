@@ -4943,6 +4943,16 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		}
 	}()
 
+	// Pre-compile request override engine once per worker (safe for concurrent reads).
+	var overrideEngine *providerUtils.RequestOverrideEngine
+	if len(config.RequestOverrides) > 0 {
+		var engineErr error
+		overrideEngine, engineErr = providerUtils.NewRequestOverrideEngine(config.RequestOverrides)
+		if engineErr != nil {
+			bifrost.logger.Error("failed to compile request overrides for provider %s: %v", provider.GetProviderKey(), engineErr)
+		}
+	}
+
 	for req := range pq.queue {
 		_, model, _ := req.BifrostRequest.GetRequestFields()
 
@@ -4957,6 +4967,11 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 			baseProvider = cfg.BaseProviderType
 		}
 		req.Context.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
+
+		// Inject request override engine into context so CheckContextAndGetRequestBody can apply it
+		if overrideEngine != nil {
+			req.Context.SetValue(schemas.BifrostContextKeyRequestOverrideEngine, overrideEngine)
+		}
 
 		// Determine whether this provider attempt should capture raw payloads.
 		// logging-only mode (store_raw_request_response=true, send_back_raw_*=false):

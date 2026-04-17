@@ -533,6 +533,14 @@ export const providerPricingOverrideSchema = z
 		}
 	});
 
+// Request override schema
+export const requestOverrideSchema = z.object({
+	match: z.string(),
+	set: z.record(z.string(), z.unknown()).optional(),
+	remove: z.array(z.string()).optional(),
+	defaults: z.record(z.string(), z.unknown()).optional(),
+});
+
 // Full model provider config schema
 export const modelProviderConfigSchema = z.object({
 	keys: z.array(modelProviderKeySchema).min(1, "At least one key is required"),
@@ -544,6 +552,7 @@ export const modelProviderConfigSchema = z.object({
 	store_raw_request_response: z.boolean().optional(),
 	custom_provider_config: customProviderConfigSchema.optional(),
 	pricing_overrides: z.array(providerPricingOverrideSchema).optional(),
+	request_overrides: z.array(requestOverrideSchema).optional(),
 });
 
 // Model provider schema
@@ -562,6 +571,7 @@ export const formModelProviderConfigSchema = z.object({
 	store_raw_request_response: z.boolean().optional(),
 	custom_provider_config: formCustomProviderConfigSchema.optional(),
 	pricing_overrides: z.array(providerPricingOverrideSchema).optional(),
+	request_overrides: z.array(requestOverrideSchema).optional(),
 });
 
 // Flexible model provider schema for form data - allows any string for name
@@ -581,6 +591,7 @@ export const addProviderRequestSchema = z.object({
 	store_raw_request_response: z.boolean().optional(),
 	custom_provider_config: customProviderConfigSchema.optional(),
 	pricing_overrides: z.array(providerPricingOverrideSchema).optional(),
+	request_overrides: z.array(requestOverrideSchema).optional(),
 });
 
 // Update provider request schema
@@ -594,6 +605,7 @@ export const updateProviderRequestSchema = z.object({
 	store_raw_request_response: z.boolean().optional(),
 	custom_provider_config: customProviderConfigSchema.optional(),
 	pricing_overrides: z.array(providerPricingOverrideSchema).optional(),
+	request_overrides: z.array(requestOverrideSchema).optional(),
 });
 
 // Cache config schema
@@ -608,17 +620,21 @@ const baseCacheConfigSchema = z.object({
 	updated_at: z.string().optional(),
 });
 
-const directCacheConfigSchema = baseCacheConfigSchema.extend({
-	dimension: z.literal(1),
-	keys: z.array(modelProviderKeySchema).optional(),
-}).strict();
+const directCacheConfigSchema = baseCacheConfigSchema
+	.extend({
+		dimension: z.literal(1),
+		keys: z.array(modelProviderKeySchema).optional(),
+	})
+	.strict();
 
-const providerBackedCacheConfigSchema = baseCacheConfigSchema.extend({
-	provider: modelProviderNameSchema,
-	keys: z.array(modelProviderKeySchema).optional(),
-	embedding_model: z.string().min(1, "Embedding model is required"),
-	dimension: z.number().int().min(2, "Dimension must be greater than 1 for provider-backed semantic cache"),
-}).strict();
+const providerBackedCacheConfigSchema = baseCacheConfigSchema
+	.extend({
+		provider: modelProviderNameSchema,
+		keys: z.array(modelProviderKeySchema).optional(),
+		embedding_model: z.string().min(1, "Embedding model is required"),
+		dimension: z.number().int().min(2, "Dimension must be greater than 1 for provider-backed semantic cache"),
+	})
+	.strict();
 
 export const cacheConfigSchema = z.union([directCacheConfigSchema, providerBackedCacheConfigSchema]);
 

@@ -305,6 +305,14 @@ export interface ProviderPricingOverride {
 	cache_read_input_image_token_cost?: number;
 }
 
+// RequestOverride matching Go's schemas.RequestOverride
+export interface RequestOverride {
+	match: string;
+	set?: Record<string, unknown>;
+	remove?: string[];
+	defaults?: Record<string, unknown>;
+}
+
 // OpenAIConfig holds OpenAI-specific provider configuration.
 export interface OpenAIConfig {
 	disable_store?: boolean;
@@ -322,6 +330,7 @@ export interface ModelProviderConfig {
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
 	pricing_overrides?: ProviderPricingOverride[];
+	request_overrides?: RequestOverride[];
 	status?: "unknown" | "success" | "list_models_failed";
 	description?: string;
 }
@@ -352,6 +361,7 @@ export interface AddProviderRequest {
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
 	pricing_overrides?: ProviderPricingOverride[];
+	request_overrides?: RequestOverride[];
 }
 
 // UpdateProviderRequest matching Go's UpdateProviderRequest
@@ -366,6 +376,7 @@ export interface UpdateProviderRequest {
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
 	pricing_overrides?: ProviderPricingOverride[];
+	request_overrides?: RequestOverride[];
 }
 
 // BifrostErrorResponse matching Go's schemas.BifrostError
